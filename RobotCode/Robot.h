@@ -3,45 +3,4 @@
 #include "WPILib.h"
 #include <vector>
 
-class Control;
-class Drive;
-class Autonomous;
-class BcdSwitch;
-class ImageTracker;
-class Log;
-class Balance;
-class Arm;
-class Gatherer;
-class Dumper;
-class RampDevice;
-
-/** 
- * Container class for robot components
- */
-class Robot {
-public:	
-	enum Type { BotProto, BotFinal };
-	Robot(Type type);
-	virtual ~Robot();
-	Drive *drive;
-	Control *control;
-	Relay *driveLight;
-	AnalogChannel *ultrasonic;
-	Autonomous *autonomous;
-	AnalogChannel *gyroChannel;
-	Gyro *gyro;
-	DigitalInput *touchSensor;
-	AxisCamera *camera;
-	BcdSwitch *bcd;
-	ImageTracker *imageTracker;
-	Log *log;
-	Compressor *compressor;
-	Type type;
-	Balance *balance;
-	RampDevice *rampDevice;
-	Arm *arm;
-	Gatherer *gatherer;
-	Dumper *dumper;
-};
-
 #endif

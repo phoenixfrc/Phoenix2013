@@ -8,6 +8,7 @@
  * wrapper for wpilib's bullshit default log facility.
  * Logs everything pushed to error, and info as well if there's room
  */
+class Robot;
 class Log {
 	Robot *robot_;
 	std::vector<std::string> info_;

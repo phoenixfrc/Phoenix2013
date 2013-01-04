@@ -2,15 +2,15 @@
 #include "Log.h"
 
 Control::Control(Joystick *left, Joystick *right,
-								 Joystick *gamepad, Mode mode, Robot *robot)
+								 Joystick *gamepad, Mode mode, Log *log)
 	: isTriggered_(16, false), wasTriggered_(16, false),
 		gamepadIsTriggered_(16, false), gamepadWasTriggered_(16, false) {
-	this->left_ = left;
-	this->right_ = right;
-	this->control_ = right;
+	left_ = left;
+	right_ = right;
+	control_ = right;
 
-	this->gamepad_ = gamepad;
-	this->robot_ = robot;
+	gamepad_ = gamepad;
+	log_ = log;
 }
 
 Control::~Control() {
@@ -68,7 +68,7 @@ bool Control::toggleButton(int num) {
 		wasTriggered_.at(num) = isPressed;
 		return isTriggered_.at(num);
 	} catch (...) {
-		robot_->log->info("Button switching failed");
+		log_->info("Button switching failed");
 		return false;
 	}
 }
@@ -84,7 +84,7 @@ bool Control::gamepadToggleButton(int num) {
 		gamepadWasTriggered_.at(num) = isPressed;
 		return gamepadIsTriggered_.at(num);
 	} catch (...) {
-		robot_->log->info("Button switching failed");
+		log_->info("Button switching failed");
 		return false;
 	}
 }

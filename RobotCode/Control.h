@@ -4,6 +4,8 @@
 #include "Robot.h"
 #include <vector>
 
+class Log;
+
 class Control {
 	Joystick *left_, *right_;
 	// joystick to get button presses
@@ -18,7 +20,7 @@ class Control {
 	std::vector<bool> gamepadIsTriggered_;
 	std::vector<bool> gamepadWasTriggered_;
 
-	Robot *robot_;
+	Log *log_;
 
 	bool wasBridgeDeviceOnOffPressed_;
 	bool wasBridgeDeviceUpDownPressed_;
@@ -27,7 +29,7 @@ class Control {
 	public:
 	enum Mode { Tank, Arcade };
 	Control(Joystick *left, Joystick *right, Joystick *gamepad, 
-			Mode mode, Robot *robot);
+			Mode mode, Log *log);
 	virtual ~Control();
 
 	// set static scaling

@@ -13,6 +13,7 @@ struct MotorProperty {
  * Default robot drive doesn't implement scaling.
  * Reimplemented, though without arcade drive (never used anyways).
  */
+class Robot;
 class Drive {
 	typedef std::vector<MotorProperty> MotorVector;
 	MotorVector leftMotors_;
