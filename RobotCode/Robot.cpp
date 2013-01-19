@@ -2,6 +2,7 @@
 #include "Robot.h"
 #include "Control.h"
 #include "Drive.h"
+#include "Encoder.h"
 #include "Log.h"
 
 class BcdSwitch {
@@ -29,7 +30,9 @@ class Robot : public IterativeRobot {
 	Control* control;
 	BcdSwitch* bcd;
 	Log* log;
-
+	Encoder* lEncoder;
+	Encoder* rEncoder;
+	double goalDistance;
 public:
 	Robot() {
 		
@@ -49,15 +52,40 @@ public:
 		control->setLeftScale(-1);
 		control->setRightScale(-1);
 		control->setGamepadScale(-1);
+		
+		rEncoder = new Encoder(1, 2, false);
+		lEncoder = new Encoder(3, 4, false);
+	}
+	
+	void init() {
+		lEncoder->Start();
+		rEncoder->Start();
 	}
 	
 	void AutonomousInit() {
 		//int value = bcd->value();
-		// TODO
+		init();
+		goalDistance = 120;
 	}
 	
 	void AutonomousPeriodic() { 
-		// TODO
+		// TODO - rencoder is returning negative values - needs
+		// to be inverted
+		double currentDist = lEncoder->Get() / TicksPerInch;
+		double remainingMoveDist = goalDistance - currentDist;
+		if(remainingMoveDist>0){
+			drive->setLeft(.6);
+		    drive->setRight(.5);
+		} else{
+			drive->setLeft(0);
+			drive->setRight(0);
+		}
+		double dist;
+		dist = rEncoder->Get() / TicksPerInch;
+		log->info("renc in inches: %f\n", dist);
+		dist = lEncoder->Get() / TicksPerInch;
+		log->info("lenc in inches: %f\n", dist);
+		log->print();
 	}
 
 	void AutonomousDisabled() {
@@ -65,12 +93,14 @@ public:
 	}
 	
 	void TeleopInit() {
+		init();
 		drive->setShiftMode(Drive::Manual);
 	}
 
 	Relay::Value gathererDirection;
 
 	void TeleopPeriodic() {
+		int myTest;
 		if (control->button(2)) {
 			//robot.balance->loop();
 			return;
@@ -120,13 +150,17 @@ public:
 			arm->setPidFactor(arm->pidFactor() + 0.01);*/
 
 		// assorted debug
-		log->info("Shift %s", control->toggleButton(8) 
-				? "low" : "high");
+		//log->info("Shift %s", control->toggleButton(8) 
+		//		? "low" : "high");
 		//log->info("ArmPot: %.0f", arm->encoderValue());
 		//log->info("pidf: %.2f", arm->pidFactor());
 		//log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
+
+		myTest = rEncoder->Get();
+		log->info("renc: %d\n", myTest);
+		myTest = lEncoder->Get();
+		log->info("lenc: %d\n", myTest);
 		log->print();
-		
 		/*
 		// Print out shape matches from camera
 		imageTracker->updateImage();
