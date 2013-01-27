@@ -35,10 +35,15 @@ class Robot : public IterativeRobot {
 	Control* control;
 	BcdSwitch* bcd;
 	Log* log;
-	Encoder* lEncoder;
-	Encoder* rEncoder;
+	Encoder* leftDriveEncoder;
+	Encoder* rightDriveEncoder;
 	double goalDistance;
 	bool startingState;
+	Encoder* leftClimberEncoder;
+	Encoder* rightClimberEncoder;
+	CANJaguar *leftClimberMotor;
+	CANJaguar *rightClimberMotor;
+	CANJaguar *jackMotor;
 
 	enum Climber {
 		NoClimber,
@@ -113,6 +118,9 @@ public:
 		drive->addMotor(Drive::Left, 3, 1);
 		drive->addMotor(Drive::Right, 4, -1);
 		drive->addMotor(Drive::Right, 5, -1);
+
+		leftClimberMotor = new CANJaguar(6);
+		rightClimberMotor = new CANJaguar(7);
 		
 		control = new Control(
 				new Joystick(1), new Joystick(2), new Joystick(3), 
@@ -121,13 +129,15 @@ public:
 		control->setRightScale(-1);
 		control->setGamepadScale(-1);
 		
-		rEncoder = new Encoder(1, 2, false);
-		lEncoder = new Encoder(3, 4, false);
+		rightDriveEncoder = new Encoder(1, 2, true);
+		leftDriveEncoder = new Encoder(3, 4, false);
+		rightClimberEncoder = new Encoder(5, 6, false);
+		leftClimberEncoder = new Encoder(7, 8, false);
 	}
 	
 	void init() {
-		lEncoder->Start();
-		rEncoder->Start();
+		leftDriveEncoder->Start();
+		rightDriveEncoder->Start();
 	}
 	
 	void AutonomousInit() {
@@ -137,9 +147,7 @@ public:
 	}
 	
 	void AutonomousPeriodic() { 
-		// TODO - rencoder is returning negative values - needs
-		// to be inverted
-		double currentDist = lEncoder->Get() / TicksPerInch;
+		double currentDist = leftDriveEncoder->Get() / TicksPerInch;
 		double remainingMoveDist = goalDistance - currentDist;
 		if(remainingMoveDist>0){
 			drive->setLeft(.6);
@@ -149,9 +157,9 @@ public:
 			drive->setRight(0);
 		}
 		double dist;
-		dist = rEncoder->Get() / TicksPerInch;
+		dist = rightDriveEncoder->Get() / TicksPerInch;
 		log->info("renc in inches: %f\n", dist);
-		dist = lEncoder->Get() / TicksPerInch;
+		dist = leftDriveEncoder->Get() / TicksPerInch;
 		log->info("lenc in inches: %f\n", dist);
 		log->print();
 	}
@@ -171,19 +179,26 @@ public:
 		// depending on state, cont
 		switch (climbState) {
 		case NotInitialized: {
-			// climbers not yet deployed at all
-			//initializeClimber();	// Start up both the left and right climbing mechanisms
+			leftClimberEncoder->Start();
+			rightClimberEncoder->Start();
 			setClimbState(Initializing);
 			break; }
 		case Initializing: {
+			if (startingState) {
+				leftClimberMotor->Set(1.0);
+				rightClimberMotor->Set(1.0);
+				// set motors, etc.
+				startingState = false;
+			}
 			// moving climbers into initial position
-			/*if (leftClimberEncoderDistance() >= initialDistance)
-				leftClimberMotor.stop();
-			if (rightClimberEncoderDistance() >= initialDistance )
-				rightClimberMotor.stop();
-			if (leftClimberEncoderDistance() < initialDistance ||
-					rightClimberEncoderDistance() < initialDistance )
-				return; */
+			float leftDistance = leftDriveEncoder->Get() / ClimberTicksPerInch;
+			float rightDistance = rightDriveEncoder->Get() / ClimberTicksPerInch;
+			if (leftDistance >= initialDistance)
+				leftClimberMotor->Set(0.0);
+			if (rightDistance >= initialDistance )
+				rightClimberMotor->Set(0.0);
+			if (leftDistance < initialDistance || rightDistance < initialDistance )
+				return;
 			setClimbState(DeployingJack);
 			break; }
 		case DeployingJack: {
@@ -310,9 +325,9 @@ public:
 		//log->info("pidf: %.2f", arm->pidFactor());
 		//log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
 
-		myTest = rEncoder->Get();
+		myTest = rightDriveEncoder->Get();
 		log->info("renc: %d\n", myTest);
-		myTest = lEncoder->Get();
+		myTest = leftDriveEncoder->Get();
 		log->info("lenc: %d\n", myTest);
 		log->print();
 		
