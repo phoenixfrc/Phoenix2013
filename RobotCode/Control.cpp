@@ -1,6 +1,6 @@
 #include "Control.h"
 #include "Log.h"
-
+/* Test */
 Control::Control(Joystick *left, Joystick *right,
 								 Joystick *gamepad, Mode mode, Log *log)
 	: isTriggered_(16, false), wasTriggered_(16, false),

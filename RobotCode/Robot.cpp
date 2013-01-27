@@ -2,6 +2,7 @@
 #include "Robot.h"
 #include "Control.h"
 #include "Drive.h"
+#include "Encoder.h"
 #include "Log.h"
 
 class BcdSwitch {
@@ -34,6 +35,10 @@ class Robot : public IterativeRobot {
 	Control* control;
 	BcdSwitch* bcd;
 	Log* log;
+	Encoder* lEncoder;
+	Encoder* rEncoder;
+	double goalDistance;
+	bool startingState;
 
 	enum Climber {
 		NoClimber,
@@ -42,11 +47,11 @@ class Robot : public IterativeRobot {
 	};
 	Climber currentClimber;
 	static const char* ClimberString(Climber climber) {
-		static const char* climberString[] {
+		static const char* climberString[] = {
 			"NoClimber",
 			"LeftClimber",
 			"RightClimber"	
-		}
+		};
 		return climberString[climber];
 	}
 	enum ClimbState {
@@ -65,8 +70,8 @@ class Robot : public IterativeRobot {
 		Finished
 	};
 	ClimbState climbState;
-	static const char* ClimberStateString(ClimberState climberState) {
-		static const char* climberStateString[] {
+	static const char* ClimbStateString(ClimbState climbState) {
+		static const char* climbStateString[] = {
 			"NotInitialized",
 			"Initializing",
 			"DeployingJack",
@@ -79,8 +84,8 @@ class Robot : public IterativeRobot {
 			"FinalLift",
 			"FinalShooting",
 			"Finished"
-		}
-		return climberStateString[climberState];
+		};
+		return climbStateString[climbState];
 	}
 	enum Bar {
 		LowerBar,
@@ -88,6 +93,14 @@ class Robot : public IterativeRobot {
 		UpperBar
 	};
 	Bar bar;
+	static const char* BarString(Bar bar) {
+		static const char* barString[] = {
+			"LowerBar",
+			"MiddleBar",
+			"UpperBar"	
+		};
+		return barString[bar];
+	}
 	
 public:
 	Robot() {
@@ -107,15 +120,40 @@ public:
 		control->setLeftScale(-1);
 		control->setRightScale(-1);
 		control->setGamepadScale(-1);
+		
+		rEncoder = new Encoder(1, 2, false);
+		lEncoder = new Encoder(3, 4, false);
+	}
+	
+	void init() {
+		lEncoder->Start();
+		rEncoder->Start();
 	}
 	
 	void AutonomousInit() {
 		//int value = bcd->value();
-		// TODO
+		init();
+		goalDistance = 120;
 	}
 	
 	void AutonomousPeriodic() { 
-		// TODO
+		// TODO - rencoder is returning negative values - needs
+		// to be inverted
+		double currentDist = lEncoder->Get() / TicksPerInch;
+		double remainingMoveDist = goalDistance - currentDist;
+		if(remainingMoveDist>0){
+			drive->setLeft(.6);
+		    drive->setRight(.5);
+		} else{
+			drive->setLeft(0);
+			drive->setRight(0);
+		}
+		double dist;
+		dist = rEncoder->Get() / TicksPerInch;
+		log->info("renc in inches: %f\n", dist);
+		dist = lEncoder->Get() / TicksPerInch;
+		log->info("lenc in inches: %f\n", dist);
+		log->print();
 	}
 
 	void AutonomousDisabled() {
@@ -246,12 +284,13 @@ public:
 	}
 	
 	void TeleopInit() {
+		init();
 		drive->setShiftMode(Drive::Manual);
 		climbState = NotInitialized;
 	}
 
 	void TeleopPeriodic() {
-
+		int myTest;
 		if (control->button(2)) {
 			ClimbPeriodic();
 			return;
@@ -265,13 +304,17 @@ public:
 		drive->setLowShift(control->gamepadToggleButton(9));
 
 		// assorted debug
-		log->info("Shift %s", control->toggleButton(8) 
-				? "low" : "high");
+		//log->info("Shift %s", control->toggleButton(8) 
+		//		? "low" : "high");
 		//log->info("ArmPot: %.0f", arm->encoderValue());
 		//log->info("pidf: %.2f", arm->pidFactor());
 		//log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
+
+		myTest = rEncoder->Get();
+		log->info("renc: %d\n", myTest);
+		myTest = lEncoder->Get();
+		log->info("lenc: %d\n", myTest);
 		log->print();
-		
 		
 	}
 };
