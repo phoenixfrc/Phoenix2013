@@ -5,21 +5,26 @@
 #include "Log.h"
 
 class BcdSwitch {
-	DigitalInput *port[4];
+	DigitalInput *_port[4];
 public:
 	BcdSwitch(int port1, int port2, int port3, int port4) {
-		this->port[0] = new DigitalInput(port1);
-		this->port[1] = new DigitalInput(port2);
-		this->port[2] = new DigitalInput(port3);
-		this->port[3] = new DigitalInput(port4);
+		this->_port[0] = new DigitalInput(port1);
+		this->_port[1] = new DigitalInput(port2);
+		this->_port[2] = new DigitalInput(port3);
+		this->_port[3] = new DigitalInput(port4);
 	}
 	int value() {
 		int ret = 0;
 		for(int i = 0; i < 4; ++i) {
-			if (port[i]->Get())
+			if (_port[i]->Get())
 				ret |= 1<<i;
 		}
 		return ret;
+		// Alternative:
+		//return port[3]->Get()<<3 |
+		// 		 port[2]->Get()<<2 |
+		// 		 port[1]->Get()<<1 |
+		//	     port[0]->Get();
 	}
 
 };
@@ -30,12 +35,65 @@ class Robot : public IterativeRobot {
 	BcdSwitch* bcd;
 	Log* log;
 
+	enum Climber {
+		NoClimber,
+		LeftClimber,
+		RightClimber
+	};
+	Climber currentClimber;
+	static const char* ClimberString(Climber climber) {
+		static const char* climberString[] {
+			"NoClimber",
+			"LeftClimber",
+			"RightClimber"	
+		}
+		return climberString[climber];
+	}
+	enum ClimbState {
+		NotInitialized,	// climbers not yet deployed at all
+		Initializing,	// moving climbers into initial position
+		DeployingJack,	//
+		InitialGrab, 	// Pulling both arms down enough to latch (low power consumption)
+		InitialLift,	// Continue pulling, but now high power consumption
+		// The follow series repeats
+		MoveArmUpToMiddle,
+		GrabMiddle,
+		MoveArmUpToNext,
+		GrabTop,
+		FinalLift,
+		FinalShooting,
+		Finished
+	};
+	ClimbState climbState;
+	static const char* ClimberStateString(ClimberState climberState) {
+		static const char* climberStateString[] {
+			"NotInitialized",
+			"Initializing",
+			"DeployingJack",
+			"InitialGrab",
+			"InitialLift",
+			"MoveArmUpToMiddle",
+			"GrabMiddle",
+			"MoveArmUpToNext",
+			"GrabTop",
+			"FinalLift",
+			"FinalShooting",
+			"Finished"
+		}
+		return climberStateString[climberState];
+	}
+	enum Bar {
+		LowerBar,
+		MiddleBar,
+		UpperBar
+	};
+	Bar bar;
+	
 public:
 	Robot() {
+		log = new Log(this);
 		
 		bcd = new BcdSwitch(11, 12, 13, 14);
-		
-		log = new Log(this);
 		
 		drive = new Drive(2, this);
 		drive->addMotor(Drive::Left, 2, 1);
@@ -63,16 +121,139 @@ public:
 	void AutonomousDisabled() {
 		//delete autonomous;
 	}
+
+	void setClimbState(ClimbState newState) {
+		climbState = newState;
+		startingState = true;
+		log->info("new state: %s", newState);
+		log->print();
+	}
+	
+	void ClimbPeriodic() {
+		// depending on state, cont
+		switch (climbState) {
+		case NotInitialized: {
+			// climbers not yet deployed at all
+			//initializeClimber();	// Start up both the left and right climbing mechanisms
+			setClimbState(Initializing);
+			break; }
+		case Initializing: {
+			// moving climbers into initial position
+			/*if (leftClimberEncoderDistance() >= initialDistance)
+				leftClimberMotor.stop();
+			if (rightClimberEncoderDistance() >= initialDistance )
+				rightClimberMotor.stop();
+			if (leftClimberEncoderDistance() < initialDistance ||
+					rightClimberEncoderDistance() < initialDistance )
+				return; */
+			setClimbState(DeployingJack);
+			break; }
+		case DeployingJack: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(InitialGrab);
+			break; }
+		case InitialGrab: {
+			// Pulling both arms down enough to latch (low power consumption)
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(InitialLift);
+			break; }
+		case InitialLift: {
+			// Continue pulling, but now high power consumption
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(MoveArmUpToMiddle);
+			break; }
+		case MoveArmUpToMiddle: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(GrabMiddle);
+			break; }
+		case GrabMiddle: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(MoveArmUpToNext);
+			break; }
+		case MoveArmUpToNext: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(GrabTop);
+			break; }
+		case GrabTop: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			break; }
+		case FinalLift: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(FinalShooting);
+			break; }
+		case FinalShooting: {
+			if (startingState) {
+				// set motors, etc.
+				startingState = false;
+			}
+			if (0 /*!endCondition*/)
+				return;
+			// turn off motors, etc., that were enabled
+			setClimbState(Finished);
+			break; }
+		default:
+			log->info("unexpected climber state!");
+			log->print();
+		}
+	}
 	
 	void TeleopInit() {
 		drive->setShiftMode(Drive::Manual);
+		climbState = NotInitialized;
 	}
 
-	Relay::Value gathererDirection;
-
 	void TeleopPeriodic() {
+
 		if (control->button(2)) {
-			//robot.balance->loop();
+			ClimbPeriodic();
 			return;
 		}
 
@@ -83,42 +264,6 @@ public:
 		drive->setReversed(control->toggleButton(11));
 		drive->setLowShift(control->gamepadToggleButton(9));
 
-		// ball gatherer
-		/*
-		if (control->gamepadButton(6)) 
-			gathererDirection = Relay::kForward;
-		else if (control->gamepadButton(7))
-			gathererDirection = Relay::kReverse;
-		else if (control->gamepadButton(8))
-			gathererDirection = Relay::kOff;
-		gatherer->setDirection(gathererDirection);
-		*/
-
-		// Button 11 is mode control: if enabled, the joystick controls
-		// the bridge mechanism. If not, it's the standard arm.
-		/*
-		if (!control->gamepadButton(11)) {
-			if (control->gamepadButton(4))
-				arm->setPosition(Arm::Up);
-			else if (control->gamepadButton(3))
-				arm->setPosition(Arm::Middle);
-			else if (control->gamepadButton(5))
-				arm->setPosition(Arm::Down);
-			else 
-				arm->setPower(control->gamepadLeft());
-			
-			rampDevice->set(0);
-		} else {
-			rampDevice->set(control->gamepadLeft());
-			arm->setPower(0);
-		}
-		*/
-			
-		/*if (control->gamepadButton(10))
-			arm->setPidFactor(arm->pidFactor() - 0.01);
-		if (control->gamepadButton(11))
-			arm->setPidFactor(arm->pidFactor() + 0.01);*/
-
 		// assorted debug
 		log->info("Shift %s", control->toggleButton(8) 
 				? "low" : "high");
@@ -127,23 +272,7 @@ public:
 		//log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
 		log->print();
 		
-		/*
-		// Print out shape matches from camera
-		imageTracker->updateImage();
-		//imageTracker->writeFiles();
-		std::vector<RectangleMatch> matches = imageTracker->matches();
-		RectangleMatch topMatch;
-		memset(&topMatch, 0, sizeof(topMatch));
-		for(size_t i = 0; i < matches.size(); ++i) {
-			if(matches[i].score > topMatch.score) topMatch = matches[i];
-		}*/
 		
-		/*log->info("rect %.1f: %.1f, %.1f, %.1f, %.1f", 
-				topMatch.score,
-				topMatch.corner[1].x,
-				topMatch.corner[1].y,
-				topMatch.corner[3].x,
-				topMatch.corner[3].y);*/
 	}
 };
 
