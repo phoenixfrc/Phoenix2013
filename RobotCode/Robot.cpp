@@ -193,11 +193,11 @@ public:
 			// moving climbers into initial position
 			float leftDistance = leftDriveEncoder->Get() / ClimberTicksPerInch;
 			float rightDistance = rightDriveEncoder->Get() / ClimberTicksPerInch;
-			if (leftDistance >= initialDistance)
+			if (leftDistance >= InitialDistance)
 				leftClimberMotor->Set(0.0);
-			if (rightDistance >= initialDistance )
+			if (rightDistance >= InitialDistance )
 				rightClimberMotor->Set(0.0);
-			if (leftDistance < initialDistance || rightDistance < initialDistance )
+			if (leftDistance < InitialDistance || rightDistance < InitialDistance )
 				return;
 			setClimbState(DeployingJack);
 			break; }
