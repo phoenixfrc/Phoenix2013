@@ -43,6 +43,7 @@ class Robot : public IterativeRobot {
 	Encoder* rightClimberEncoder;
 	CANJaguar *leftClimberMotor;
 	CANJaguar *rightClimberMotor;
+	Encoder* jackEncoder;
 	CANJaguar *jackMotor;
 
 	enum Climber {
@@ -119,9 +120,17 @@ public:
 		drive->addMotor(Drive::Right, 4, -1);
 		drive->addMotor(Drive::Right, 5, -1);
 
+		rightDriveEncoder = new Encoder(1, 2, true);
+		leftDriveEncoder = new Encoder(3, 4, false);
+		
 		leftClimberMotor = new CANJaguar(6);
 		rightClimberMotor = new CANJaguar(7);
-		
+		leftClimberEncoder = new Encoder(5, 6, false);
+		rightClimberEncoder = new Encoder(7, 8, false);
+
+		jackMotor = new CANJaguar(8);
+		jackEncoder = new Encoder(9, 10, false);
+
 		control = new Control(
 				new Joystick(1), new Joystick(2), new Joystick(3), 
 				Control::Tank, log);
@@ -129,10 +138,7 @@ public:
 		control->setRightScale(-1);
 		control->setGamepadScale(-1);
 		
-		rightDriveEncoder = new Encoder(1, 2, true);
-		leftDriveEncoder = new Encoder(3, 4, false);
-		rightClimberEncoder = new Encoder(5, 6, false);
-		leftClimberEncoder = new Encoder(7, 8, false);
+
 	}
 	
 	void init() {
@@ -181,32 +187,38 @@ public:
 		case NotInitialized: {
 			leftClimberEncoder->Start();
 			rightClimberEncoder->Start();
+			jackEncoder->Start();
 			setClimbState(Initializing);
 			break; }
 		case Initializing: {
 			if (startingState) {
+				// set motors, etc.
 				leftClimberMotor->Set(1.0);
 				rightClimberMotor->Set(1.0);
-				// set motors, etc.
 				startingState = false;
 			}
 			// moving climbers into initial position
 			float leftDistance = leftDriveEncoder->Get() / ClimberTicksPerInch;
 			float rightDistance = rightDriveEncoder->Get() / ClimberTicksPerInch;
-			if (leftDistance >= InitialDistance)
+			if (leftDistance >= InitialClimberDistance)
 				leftClimberMotor->Set(0.0);
-			if (rightDistance >= InitialDistance )
+			if (rightDistance >= InitialClimberDistance)
 				rightClimberMotor->Set(0.0);
-			if (leftDistance < InitialDistance || rightDistance < InitialDistance )
+			if (leftDistance < InitialClimberDistance || rightDistance < InitialClimberDistance )
 				return;
 			setClimbState(DeployingJack);
 			break; }
 		case DeployingJack: {
+			// moving jack into position
 			if (startingState) {
 				// set motors, etc.
+				jackMotor->Set(1.0);
 				startingState = false;
 			}
-			if (0 /*!endCondition*/)
+			float jackDistance = jackEncoder->Get() / JackTicksPerInch;
+			if (jackDistance >= JackDistance)
+				jackMotor->Set(0.0);
+			if (jackDistance < JackDistance)
 				return;
 			// turn off motors, etc., that were enabled
 			setClimbState(InitialGrab);
@@ -215,8 +227,15 @@ public:
 			// Pulling both arms down enough to latch (low power consumption)
 			if (startingState) {
 				// set motors, etc.
+				leftClimberMotor->Set(-1.0);
+				rightClimberMotor->Set(-1.0);
+				// set motors, etc.
 				startingState = false;
 			}
+			// We have several options here:
+			// 1. Move a specific distance and assume it is right
+			// 2. Move until the power goes up, and then check the encoders to see if the distance
+			//    is plausible
 			if (0 /*!endCondition*/)
 				return;
 			// turn off motors, etc., that were enabled
