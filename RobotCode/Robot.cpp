@@ -73,11 +73,13 @@ class Robot : public IterativeRobot {
 		GrabTop,
 		FinalLift,
 		FinalShooting,
-		Finished
+		Finished,
+		Abort,
+		    ClimbStateLast
 	};
 	ClimbState climbState;
 	static const char* ClimbStateString(ClimbState climbState) {
-		static const char* climbStateString[] = {
+		static const char* climbStateString[ClimbStateLast] = {
 			"NotInitialized",
 			"Initializing",
 			"DeployingJack",
@@ -89,7 +91,8 @@ class Robot : public IterativeRobot {
 			"GrabTop",
 			"FinalLift",
 			"FinalShooting",
-			"Finished"
+			"Finished",
+			"Abort"
 		};
 		return climbStateString[climbState];
 	}
@@ -177,11 +180,31 @@ public:
 	void setClimbState(ClimbState newState) {
 		climbState = newState;
 		startingState = true;
-		log->info("new state: %s", newState);
+		log->info("new state: %s", ClimbStateString(newState));
 		log->print();
+	}
+
+	void AbortClimb(const char* message) {
+		log->info("%s",message);
+		log->info("state was: %s", ClimbStateString(climbState));
+		log->print();
+		climbState = Abort;
+		// ensure all motors are shut down
+		leftClimberMotor->Set(0.0);
+		rightClimberMotor->Set(0.0);
+		jackMotor->Set(0.0);
 	}
 	
 	void ClimbPeriodic() {
+		// This is the distance in inches the climber must be initially raised
+		static const float InitialClimberDistance = 20.0; // Inches
+		// This is the distance in inches the jack must be raised
+		static const float JackDistance = 15.0;
+		// Distance to pull down on the grabber before it is expected to engage.
+		// If it does NOT engage in this distance, that suggests something may be wrong
+		// and we should abort.
+		static const float ClimberGrabDistance = 4;
+		
 		// depending on state, cont
 		switch (climbState) {
 		case NotInitialized: {
@@ -198,8 +221,8 @@ public:
 				startingState = false;
 			}
 			// moving climbers into initial position
-			float leftDistance = leftDriveEncoder->Get() / ClimberTicksPerInch;
-			float rightDistance = rightDriveEncoder->Get() / ClimberTicksPerInch;
+			float leftDistance = leftClimberEncoder->Get() / ClimberTicksPerInch;
+			float rightDistance = rightClimberEncoder->Get() / ClimberTicksPerInch;
 			if (leftDistance >= InitialClimberDistance)
 				leftClimberMotor->Set(0.0);
 			if (rightDistance >= InitialClimberDistance)
@@ -236,9 +259,23 @@ public:
 			// 1. Move a specific distance and assume it is right
 			// 2. Move until the power goes up, and then check the encoders to see if the distance
 			//    is plausible
-			if (0 /*!endCondition*/)
+			// 3. Move until a limit switch inside the grip for each climber trips
+			float leftDistance = leftClimberEncoder->Get() / ClimberTicksPerInch;
+			float rightDistance = rightClimberEncoder->Get() / ClimberTicksPerInch;
+			if (0 /*leftClimberSwitch->???  is set */) {
+				leftClimberMotor->Set(0.0);
+			} else if (leftDistance >= ClimberGrabDistance) {
+				AbortClimb("Left grab did not occur when expected");
 				return;
-			// turn off motors, etc., that were enabled
+			}
+			if (0 /*rightClimberSwitch->??? is set */) {
+				rightClimberMotor->Set(0.0);
+			} else if (rightDistance >= ClimberGrabDistance) {
+				AbortClimb("Right grab did not occur when expected");
+				return;
+			}
+			if (leftDistance < ClimberGrabDistance || rightDistance < ClimberGrabDistance )
+				return;
 			setClimbState(InitialLift);
 			break; }
 		case InitialLift: {
@@ -311,6 +348,9 @@ public:
 			// turn off motors, etc., that were enabled
 			setClimbState(Finished);
 			break; }
+		case Abort: {
+			return;
+			}
 		default:
 			log->info("unexpected climber state!");
 			log->print();
