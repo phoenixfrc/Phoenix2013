@@ -45,6 +45,8 @@ class Robot : public IterativeRobot {
 	CANJaguar *rightClimberMotor;
 	Encoder* jackEncoder;
 	CANJaguar *jackMotor;
+	float leftClimberStart;
+	float rightClimberStart;
 
 	enum Climber {
 		NoClimber,
@@ -197,13 +199,13 @@ public:
 	
 	void ClimbPeriodic() {
 		// This is the distance in inches the climber must be initially raised
-		static const float InitialClimberDistance = 20.0; // Inches
+		static const float InitialClimberDistance = 8.0 + 6.0; // Inches
 		// This is the distance in inches the jack must be raised
 		static const float JackDistance = 15.0;
 		// Distance to pull down on the grabber before it is expected to engage.
 		// If it does NOT engage in this distance, that suggests something may be wrong
 		// and we should abort.
-		static const float ClimberGrabDistance = 4;
+		static const float ClimberGrabDistance = 8.0;
 		
 		// depending on state, cont
 		switch (climbState) {
@@ -280,13 +282,24 @@ public:
 			break; }
 		case InitialLift: {
 			// Continue pulling, but now high power consumption
+			
 			if (startingState) {
 				// set motors, etc.
+				leftClimberStart = leftClimberEncoder->Get() / ClimberTicksPerInch;
+				rightClimberStart = rightClimberEncoder->Get() / ClimberTicksPerInch;
+				leftClimberMotor->Set(-1.0);
+				rightClimberMotor->Set(-1.0);
 				startingState = false;
-			}
-			if (0 /*!endCondition*/)
+			}//*** unfinished edit
+			// moving climbers into initial position
+			float leftDistance = leftClimberEncoder->Get() / ClimberTicksPerInch;
+			float rightDistance = rightClimberEncoder->Get() / ClimberTicksPerInch;
+			if (leftDistance >= InitialClimberDistance)
+				leftClimberMotor->Set(0.0);
+			if (rightDistance >= InitialClimberDistance)
+				rightClimberMotor->Set(0.0);
+			if (leftDistance < InitialClimberDistance || rightDistance < InitialClimberDistance )
 				return;
-			// turn off motors, etc., that were enabled
 			setClimbState(MoveArmUpToMiddle);
 			break; }
 		case MoveArmUpToMiddle: {
