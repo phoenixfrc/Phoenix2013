@@ -31,15 +31,19 @@ public:
 };
 
 class Robot : public IterativeRobot {
+	// Generalize this to "Actuator" or something that would also cover the Jack?
 	struct Climber {
 		CANJaguar* motor;
 		Encoder* encoder;
+		// Make into an array indexed by the enum, and add upper and lower limit switches?
 		AnalogIOButton* upperHookSwitch;
 		AnalogIOButton* lowerHookSwitch;
 		const char* name;
 		float climberStart;
+		// Add constructor?
 	};
 	Climber* climber;
+	// make these pointers?
 	Climber leftClimber;
 	Climber rightClimber;
 		
@@ -70,8 +74,10 @@ class Robot : public IterativeRobot {
 		// The follow series repeats
 		MoveArmUpToMiddle,
 		GrabMiddle,
-		MoveArmUpToNext,
+		PullUpToMiddle,
+		MoveArmUpToTop,
 		GrabTop,
+		PullUpToTop,
 		FinalLift,
 		FinalShooting,
 		Finished,
@@ -88,8 +94,10 @@ class Robot : public IterativeRobot {
 			"InitialLift",
 			"MoveArmUpToMiddle",
 			"GrabMiddle",
-			"MoveArmUpToNext",
+			"PullUpToMiddle",
+			"MoveArmUpToTop",
 			"GrabTop",
+			"PullUpToTop",
 			"FinalLift",
 			"FinalShooting",
 			"Finished",
@@ -182,6 +190,8 @@ public:
 	}
 
 	void setClimbState(ClimbState newState) {
+		if (climbState == Abort)
+			return;
 		climbState = newState;
 		startingState = true;
 		log->info("new state: %s", ClimbStateString(newState));
@@ -198,23 +208,19 @@ public:
 		rightClimber.motor->Set(0.0);
 		jackMotor->Set(0.0);
 	}
-	
-	void StartState(
-			Climber* climber,
-			float powerLevel)	//typically 1.0 for forward -1.0 for backward
-	{
-		if(! startingState)
-			return;
-		// set motors, etc.
-		climber->climberStart = climber->encoder->Get() / ClimberTicksPerInch;
-		climber->motor->Set(powerLevel);
-	}
-	
+
+		
 	bool UpdateState(
 			Climber* climber,
+			float powerLevel,	//typically 1.0 for forward -1.0 for backward
 			HookSwitch hookSwitch,
 			float maxDistance)
 	{
+		if(startingState){
+			// set motors, etc.
+			climber->climberStart = climber->encoder->Get() / ClimberTicksPerInch;
+			climber->motor->Set(powerLevel);	
+		}
 		float distance = climber->encoder->Get() / ClimberTicksPerInch - climber->climberStart;
 		if (distance < 0) distance = -distance;
 		if ( (hookSwitch == UpperHookSwitch && climber->upperHookSwitch->Get())||
@@ -225,10 +231,35 @@ public:
 		} else if (hookSwitch != NoHookSwitch && distance >= maxDistance) {
 			AbortClimb("Grab did not occur when expected");
 			return false;
-		}
+		} // else if (hookSwitch != NoHookSwitch && Check motor power draw)
+		// abort here if looking for switch and started drawing a lot of power 
 		return false;
 	}
 
+	
+	// Compress further to this?  The ClimberPeriod then becomes an interpreter.
+	// This would use absolute rather than relative positions
+	/*
+	// Up or down is determined relative to goal position.  Default is NoTrigger
+	static Action actions[] = {
+		{ "MoveInitial",	{ { leftClimber,  InitialPos }, 
+							  { rightClimber, InitialPos } } },
+		{ "DeployJack",		{ { jack,         JackDeployedPos } } },
+		{ "Grab",			{ { leftClimber,  InitialGrabPos,      UpperTrigger }, 
+							  { rightClimber, InitialGrabPos,      UpperTrigger } } },
+		{ "LBeforeMidLow",  { { leftClimber,  MiddleHookBeforeGrab } } },
+		{ "LGrabMidLow",    { { leftClimber,  MiddleHookAfterGrab, MiddleTrigger } } },
+		{ "RBeforeMidLow",  { { rightClimber, MiddleHookBeforeGrab } } },
+		{ "RGrabMidLow",	{ { rightClimber, MiddleHookAfterGrab, MiddleTrigger } } },
+		…
+
+		NULL };
+
+	currentAction = …
+	if (currentAction->done) {
+	}
+	 */
+	
 	void ClimbPeriodic() {
 		//amount to move past the bar to extend hook
 		static const float CatchDistance = 6.0;
@@ -254,17 +285,12 @@ public:
 			setClimbState(Initializing);
 			break; }
 		case Initializing: {
-			if (startingState) {
-				StartState(&leftClimber, 1.0);
-				StartState(&rightClimber, 1.0);
-				startingState = false;
-			}
-			bool leftDone = UpdateState(&leftClimber, NoHookSwitch, InitialClimberDistance);
-			bool rightDone = UpdateState(&rightClimber, NoHookSwitch, InitialClimberDistance);
+			bool leftDone = UpdateState(&leftClimber,1.0, NoHookSwitch, InitialClimberDistance);
+			bool rightDone = UpdateState(&rightClimber,1.0, NoHookSwitch, InitialClimberDistance);
+			startingState = false;
 			// moving climbers into initial position
-			if (!leftDone || !rightDone)
-				return;
-			setClimbState(DeployingJack);
+			if (leftDone && rightDone)
+				setClimbState(DeployingJack);
 			break; }
 		case DeployingJack: {
 			// moving jack into position
@@ -274,12 +300,11 @@ public:
 				startingState = false;
 			}
 			float jackDistance = jackEncoder->Get() / JackTicksPerInch;
-			if (jackDistance >= JackDistance)
+			if (jackDistance >= JackDistance){
 				jackMotor->Set(0.0);
-			if (jackDistance < JackDistance)
-				return;
-			// turn off motors, etc., that were enabled
-			setClimbState(InitialGrab);
+				// turn off motors, etc., that were enabled
+				setClimbState(InitialGrab);
+			}
 			break; }
 		case InitialGrab: {
 			// Pulling both arms down enough to latch (low power consumption)
@@ -288,32 +313,22 @@ public:
 			// 2. Move until the power goes up, and then check the encoders to see if the distance
 			//    is plausible
 			// 3. Move until a limit HookSwitch inside the grip for each climber trips
-			if (startingState) {
-				StartState(&leftClimber, -1.0);
-				StartState(&rightClimber, -1.0);
-				startingState = false;
-			}
-			bool leftDone = UpdateState(&leftClimber, UpperHookSwitch, ClimberGrabGuardDistance);
-			bool rightDone = UpdateState(&rightClimber, UpperHookSwitch, ClimberGrabGuardDistance);
+			bool leftDone = UpdateState(&leftClimber,-1.0, UpperHookSwitch, ClimberGrabGuardDistance);
+			bool rightDone = UpdateState(&rightClimber,-1.0, UpperHookSwitch, ClimberGrabGuardDistance);
+			startingState = false;
 			// moving climbers into initial position
-			if (!leftDone || !rightDone)
-				return;
-			setClimbState(InitialLift);
+			if (leftDone && rightDone)
+				setClimbState(InitialLift);
 			break; }
 		case InitialLift: {
 			// Continue pulling, but now high power consumption
-			if (startingState) {
-				StartState(&leftClimber, -1.0);
-				StartState(&rightClimber, -1.0);
-				startingState = false;
-			}
 			//Note that this may run into the bottom hard
-			bool leftDone = UpdateState(&leftClimber, NoHookSwitch, leftClimber.encoder->Get() / ClimberTicksPerInch);
-			bool rightDone = UpdateState(&rightClimber, NoHookSwitch, rightClimber.encoder->Get() / ClimberTicksPerInch);
+			bool leftDone = UpdateState(&leftClimber,-1.0, NoHookSwitch, leftClimber.encoder->Get() / ClimberTicksPerInch);
+			bool rightDone = UpdateState(&rightClimber,-1.0, NoHookSwitch, rightClimber.encoder->Get() / ClimberTicksPerInch);
+			startingState = false;
 			// moving climbers into initial position
-			if (!leftDone || !rightDone)
-				return;
-			setClimbState(MoveArmUpToMiddle);
+			if (leftDone && rightDone)
+				setClimbState(MoveArmUpToMiddle);
 			break; }
 		case MoveArmUpToMiddle: {
 			// moving a climber lower hook over the bar
@@ -323,57 +338,72 @@ public:
 					climber = &leftClimber;
 				} else {
 					climber = &rightClimber;	
-				} 
-				StartState(climber, 1.0);
-				startingState = false;
+				} 				
 			}
-			bool done = UpdateState(climber, NoHookSwitch, LowerHookDistance);
-			if (!done)
-				return;
-			setClimbState(GrabMiddle);
+			bool done = UpdateState(climber,1.0, NoHookSwitch, LowerHookDistance);
+			startingState = false;
+			if (done)
+				setClimbState(GrabMiddle);
 			break; }
 		case GrabMiddle: {
-			if (startingState) {
-				// set motors, etc.
-				StartState(climber, -1.0);
-				startingState = false;
-			}
-			bool done = UpdateState(climber, LowerHookSwitch, ClimberGrabGuardDistance);
-			if (!done)
-				return;
-			if (climber == &leftClimber){
-				setClimbState(MoveArmUpToMiddle);
-			}else{
-				setClimbState(MoveArmUpToNext);
-			}
+			bool done = UpdateState(climber,-1.0, LowerHookSwitch, ClimberGrabGuardDistance);
+			startingState = false;
+			if (done){
+				if (climber == &leftClimber){
+					setClimbState(MoveArmUpToMiddle);
+					// this causes the control to return to MoveArmUpToMiddle for the right climber.
+				}else{
+					setClimbState(PullUpToMiddle);
+				}
+			}	
 			break; }
-		case MoveArmUpToNext: {
+		case PullUpToMiddle: {
+			bool leftDone = UpdateState(&leftClimber,-1.0, NoHookSwitch, leftClimber.encoder->Get() / ClimberTicksPerInch);
+			bool rightDone = UpdateState(&rightClimber,-1.0, NoHookSwitch, rightClimber.encoder->Get() / ClimberTicksPerInch);
+			startingState = false;
+			// moving climbers into initial position
+			if (leftDone && rightDone)
+				setClimbState(MoveArmUpToTop);
+			break; }
+		case MoveArmUpToTop: {
 			if (startingState) {
 				// set motors, etc.
-				startingState = false;
+				if (climber != &leftClimber){
+					climber = &leftClimber;
+				} else {
+					climber = &rightClimber;	
+				} 				
 			}
-			if (0 /*!endCondition*/)
-				return;
-			setClimbState(GrabTop);
+			bool done = UpdateState(climber,1.0, NoHookSwitch, UpperHookDistance);
+			startingState = false;
+			if (done)
+				setClimbState(GrabTop);
 			break; }
 		case GrabTop: {
-			if (startingState) {
-				// set motors, etc.
-				startingState = false;
+			bool done = UpdateState(climber,-1.0, UpperHookSwitch, ClimberGrabGuardDistance);
+			startingState = false;
+			if (done){
+				
+				if (climber == &leftClimber){
+					setClimbState(MoveArmUpToTop);
+				}else{
+					setClimbState(PullUpToTop);
+				}
 			}
-			if (0 /*!endCondition*/)
-				return;
-			// turn off motors, etc., that were enabled
 			break; }
-		case FinalLift: {
-			if (startingState) {
-				// set motors, etc.
-				startingState = false;
+		case PullUpToTop: {
+			bool leftDone = UpdateState(&leftClimber,-1.0, NoHookSwitch, leftClimber.encoder->Get() / ClimberTicksPerInch);
+			bool rightDone = UpdateState(&rightClimber,-1.0, NoHookSwitch, rightClimber.encoder->Get() / ClimberTicksPerInch);
+			startingState = false;
+			// moving climbers into Final Position
+			if (leftDone && rightDone){
+				if (bar == LowerBar){
+					bar = MiddleBar;
+					setClimbState(MoveArmUpToMiddle);
+				}else{
+					setClimbState(FinalShooting);
+				}
 			}
-			if (0 /*!endCondition*/)
-				return;
-			// turn off motors, etc., that were enabled
-			setClimbState(FinalShooting);
 			break; }
 		case FinalShooting: {
 			if (startingState) {
@@ -402,7 +432,7 @@ public:
 
 	void TeleopPeriodic() {
 		int myTest;
-		if (control->button(2)) {
+		if (control->button(2)|| climbState != NotInitialized) {
 			ClimbPeriodic();
 			return;
 		}
