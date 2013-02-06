@@ -61,8 +61,8 @@ public:
     BcdSwitch* bcd;
 
     Log* log;
-    Encoder* leftDriveEncoder;
-    Encoder* rightDriveEncoder;
+    //Encoder* leftDriveEncoder;
+    //Encoder* rightDriveEncoder;
     double goalDistance;
     bool startingState;
     Encoder* jackEncoder;
@@ -141,8 +141,8 @@ public:
         drive->addMotor(Drive::Right, 4, -1);
         drive->addMotor(Drive::Right, 5, -1);
 
-        rightDriveEncoder = new Encoder(1, 2, true);
-        leftDriveEncoder = new Encoder(3, 4, false);
+        //rightDriveEncoder = new Encoder(1, 2, true);
+        //leftDriveEncoder = new Encoder(3, 4, false);
 
         leftClimber = new Climber(
             "leftClimber",
@@ -170,9 +170,9 @@ public:
     }
     
     void init() {
-        leftDriveEncoder->Start();
-        rightDriveEncoder->Start();
-                climbState = NotInitialized;
+        //leftDriveEncoder->Start();
+        //rightDriveEncoder->Start();
+        climbState = NotInitialized;
     }
 
     void AutonomousInit() {
@@ -182,7 +182,7 @@ public:
     }
     
     void AutonomousPeriodic() { 
-        double currentDist = leftDriveEncoder->Get() / TicksPerInch;
+        double currentDist = drive->leftPosition() / TicksPerInch;
         double remainingMoveDist = goalDistance - currentDist;
         if(remainingMoveDist>0){
             drive->setLeft(.6);
@@ -192,9 +192,9 @@ public:
             drive->setRight(0);
         }
         double dist;
-        dist = rightDriveEncoder->Get() / TicksPerInch;
+        dist = drive->rightPosition() / TicksPerInch;
         log->info("renc in inches: %f\n", dist);
-        dist = leftDriveEncoder->Get() / TicksPerInch;
+        dist = drive->leftPosition() / TicksPerInch;
         log->info("lenc in inches: %f\n", dist);
         log->print();
     }
@@ -442,7 +442,6 @@ public:
     }
 
     void TeleopPeriodic() {
-        int myTest;
         if (control->button(2)|| climbState != NotInitialized) {
             ClimbPeriodic();
             return;
@@ -462,10 +461,10 @@ public:
         //log->info("pidf: %.2f", arm->pidFactor());
         //log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
 
-        myTest = rightDriveEncoder->Get();
-        log->info("renc: %d\n", myTest);
-        myTest = leftDriveEncoder->Get();
-        log->info("lenc: %d\n", myTest);
+        double myTest = drive->rightPosition();
+        log->info("renc: %f\n", myTest);
+        myTest = drive->leftPosition();
+        log->info("lenc: %f\n", myTest);
         log->print();
         
     }

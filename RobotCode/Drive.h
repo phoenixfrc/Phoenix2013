@@ -20,6 +20,7 @@ class Drive {
 	MotorVector rightMotors_;
 	void setMotors(const MotorVector &motors, double value);
 	double motorCurrent(const MotorVector &motors);
+	double position(const MotorVector &motors);
 	double scale_;
 	bool reversed_;
 	Robot *robot_;
@@ -46,6 +47,10 @@ public:
 	double leftCurrent();
 	double rightCurrent();
 	double current();
+
+	// position
+	double leftPosition();
+	double rightPosition();
 	
 	// shift
 	enum ShiftMode { Manual = 1, Automatic };

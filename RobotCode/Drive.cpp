@@ -54,6 +54,14 @@ double Drive::rightCurrent() {
 	return motorCurrent(reversed_ ? rightMotors_ : leftMotors_);
 }
 
+double Drive::leftPosition() {
+	return position(reversed_ ? leftMotors_ : rightMotors_);
+}
+
+double Drive::rightPosition() {
+	return position(reversed_ ? rightMotors_ : leftMotors_);
+}
+
 double Drive::current() {
 	return max(leftCurrent(), rightCurrent());
 }
@@ -78,6 +86,10 @@ double Drive::motorCurrent(const MotorVector &motors) {
 	return total / motors.size();
 }
 
+double Drive::position(const MotorVector &motors) {
+	return motors[0].motor->GetPosition();
+}
+
 void Drive::setShiftMode(ShiftMode mode) { this->mode_ = mode; }
 
 void Drive::setLowShift(bool set) {
@@ -92,7 +104,15 @@ void Drive::setLowShift(bool set) {
  */
 void Drive::addMotor(Side side, int port, double defaultScale) {
 	MotorProperty m = { new CANJaguar(port), defaultScale };
-	(side == Left ? leftMotors_ : rightMotors_).push_back(m);
+	if (side == Left) {
+		if (leftMotors_.empty())
+			m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
+		leftMotors_.push_back(m);
+	} else {
+		if (rightMotors_.empty())
+			m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
+		rightMotors_.push_back(m);
+	}
 }
 
 void Drive::setReversed(bool reversed) {
