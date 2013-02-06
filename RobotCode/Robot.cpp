@@ -33,21 +33,38 @@ public:
 class Robot : public IterativeRobot {
 public:
     // Generalize this to "Actuator" or something that would also cover the Jack?
-    struct Climber {
+    class ControlledMotor{
+    public:
         const char* name;
         CANJaguar* motor;
         Encoder* encoder;
-        // Make into an array indexed by the enum, and add upper and lower limit switches?
-        AnalogIOButton* upperHookSwitch;
-        AnalogIOButton* lowerHookSwitch;
-        // Add constructor?
-        Climber (
+        ControlledMotor(
+				const char* n,
+				CANJaguar* m,
+				Encoder* e) :
+			name(n), motor(m), encoder(e)
+		{}
+    };
+    class Jack: public ControlledMotor {
+	public: 
+    	Jack(
+			const char* n,
+			CANJaguar* m,
+			Encoder* e) :
+				ControlledMotor(n,m,e)
+	{}
+    };
+    class Climber: public ControlledMotor {
+	public:
+		AnalogIOButton* upperHookSwitch;
+		AnalogIOButton* lowerHookSwitch;
+		Climber (
                 const char* n,
                 CANJaguar* m,
                 Encoder* e,
                 AnalogIOButton* upperHook,
                 AnalogIOButton* lowerHook) :
-            name(n), motor(m), encoder(e), upperHookSwitch(upperHook), lowerHookSwitch(lowerHook)
+                	ControlledMotor(n,m,e), upperHookSwitch(upperHook), lowerHookSwitch(lowerHook)
         {}
     };
     Climber* climber;
@@ -453,7 +470,10 @@ public:
         drive->setScale(control->throttle());
         drive->setReversed(control->toggleButton(11));
         drive->setLowShift(control->gamepadToggleButton(9));
-
+        if (control->button(2)){
+        	leftClimber->motor->Set(control->gamepadLeft());
+        	rightClimber->motor->Set(control->gamepadRight());
+		}
         // assorted debug
         //log->info("Shift %s", control->toggleButton(8) 
         //        ? "low" : "high");
