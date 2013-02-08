@@ -51,10 +51,6 @@ double Control::throttle() {
 	return (1 - control_->GetRawAxis(3)) / 2;
 }
 
-bool Control::isBalancing() {
-	return button(2);
-}
-
 /// returns true while button is held
 bool Control::button(int num) { return control_->GetRawButton(num); }
 

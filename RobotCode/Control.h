@@ -22,10 +22,6 @@ class Control {
 
 	Log *log_;
 
-	bool wasBridgeDeviceOnOffPressed_;
-	bool wasBridgeDeviceUpDownPressed_;
-	bool isBridgeDeviceOnOff_;
-	bool isBridgeDeviceUpDown_;
 	public:
 	enum Mode { Tank, Arcade };
 	Control(Joystick *left, Joystick *right, Joystick *gamepad, 
@@ -47,14 +43,11 @@ class Control {
 	double throttle();
 	bool isReversed();
 
-	bool isBalancing(); // Activation for balancing (Hold button 5)
-
 	// buttons
 	bool button(int num);
 	bool toggleButton(int num);
 	bool gamepadButton(int num);
 	bool gamepadToggleButton(int num);
-	bool bridgeDeviceUpDown();
 };
 
 #endif
