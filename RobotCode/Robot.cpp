@@ -266,8 +266,12 @@ public:
         control->setRightScale(-1);
         control->setGamepadScale(-1);
         // Pwm ports
-        cameraPivotMotor = new Servo(0);
-        cameraElevateMotor = new Servo(1);
+        // Spike on 0
+        // Spike on 1
+        // Spike on 2
+        // Spike on 3
+        cameraPivotMotor = new Servo(9);
+        cameraElevateMotor = new Servo(10);
     }
     
     void init() {
