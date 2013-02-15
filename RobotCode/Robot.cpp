@@ -269,7 +269,6 @@ public:
         //Spike on 0
         //Spike on 1
         //Spike on 2
-        //Spike on 3
         cameraPivotMotor = new Servo(9);
         cameraElevateMotor = new Servo(10);
     }
