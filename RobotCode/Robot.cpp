@@ -266,8 +266,12 @@ public:
         control->setRightScale(-1);
         control->setGamepadScale(-1);
         // Pwm ports
-        cameraPivotMotor = new Servo(0);
-        cameraElevateMotor = new Servo(1);
+        //Spike on 0
+        //Spike on 1
+        //Spike on 2
+        //Spike on 3
+        cameraPivotMotor = new Servo(9);
+        cameraElevateMotor = new Servo(10);
     }
     
     void init() {
@@ -509,12 +513,13 @@ public:
 
         // drive
         drive->setLeft(control->left());
+        // control->setRightScale(.95);
         drive->setRight(control->right());
         drive->setScale(control->throttle());
         drive->setReversed(control->toggleButton(11));
-        drive->setLowShift(control->gamepadToggleButton(9));
-        cameraPivotMotor->Set(control->gamepadLeft());
-        cameraElevateMotor->Set(control->gamepadRight());
+        drive->setLowShift(control->gamepadToggleButton(10));
+        cameraPivotMotor->Set(control->gamepadToggleButton(8));
+        cameraElevateMotor->Set(control->gamepadToggleButton(7));
        
         // assorted debug
         //log->info("Shift %s", control->toggleButton(8) 
