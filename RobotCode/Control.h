@@ -36,8 +36,10 @@ class Control {
 	// axes
 	double left();
 	double right();
-	double gamepadLeft();
-	double gamepadRight();
+	double gamepadLeftHorizontal();
+	double gamepadLeftVertical();
+	double gamepadRightHorizontal();
+	double gamepadRightVertical();
 
 	// scaling
 	double throttle();

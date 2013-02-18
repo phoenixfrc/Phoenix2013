@@ -8,24 +8,20 @@
 class BcdSwitch {
     DigitalInput *_port[4];
 public:
-    BcdSwitch(int port1, int port2, int port3, int port4) {
-        this->_port[0] = new DigitalInput(port1);
-        this->_port[1] = new DigitalInput(port2);
-        this->_port[2] = new DigitalInput(port3);
-        this->_port[3] = new DigitalInput(port4);
+    BcdSwitch(DigitalInput* port1, DigitalInput* port2,
+    				DigitalInput* port3, DigitalInput* port4) {
+        this->_port[0] = port1;
+        this->_port[1] = port2;
+        this->_port[2] = port3;
+        this->_port[3] = port4;
     }
     int value() {
         int ret = 0;
         for(int i = 0; i < 4; ++i) {
-            if (_port[i]->Get())
+            if (!_port[i]->Get()) // func returns 0 for closed
                 ret |= 1<<i;
         }
         return ret;
-        // Alternative:
-        //return port[3]->Get()<<3 |
-        //          port[2]->Get()<<2 |
-        //          port[1]->Get()<<1 |
-        //         port[0]->Get();
     }
 
 };
@@ -100,7 +96,7 @@ public:
         CANJaguar* motor;
         Encoder* encoder;
         float ticksPerInch;
-        AnalogIOButton* lowerLimitSwitch;
+        DigitalInput* lowerLimitSwitch;
         PIDController motorController;
         ControlledMotor(
         		Robot* r,
@@ -108,7 +104,7 @@ public:
 				CANJaguar* m,
 				Encoder* e,
 				float t,
-				AnalogIOButton* l) :
+				DigitalInput* l) :
 			robot(r), name(n), motor(m), encoder(e),
 			ticksPerInch(t),lowerLimitSwitch(l),
 			motorController(.1, .001, 0.0, encoder, motor)
@@ -118,9 +114,10 @@ public:
                 float powerLevel,    //typically 1.0 for forward -1.0 for backward
                 float targetPosition)
         {
-            if (powerLevel < 0.0 && lowerLimitSwitch->Get()){
+            if (powerLevel < 0.0 && !lowerLimitSwitch->Get()){
             	motorController.Disable();
             	motor->Set(0.0);
+            	encoder->Reset();
             	encoder->Start();
             	return true;
             }
@@ -145,33 +142,34 @@ public:
 			CANJaguar* m,
 			Encoder* e,
 			float t,
-			AnalogIOButton* l) :
+			DigitalInput* l) :
 				ControlledMotor(r,n,m,e,t,l)
 	{}
     };
     class Climber: public ControlledMotor {
 	public:
-		AnalogIOButton* upperHookSwitch;
-		AnalogIOButton* lowerHookSwitch;
+		DigitalInput* lowerHookSwitch;
+		DigitalInput* upperHookSwitch;
 		Climber (
                 Robot* r,
                 const char* n,
                 CANJaguar* m,
                 Encoder* e,
                 float t,
-                AnalogIOButton* l,
-                AnalogIOButton* upperHook,
-                AnalogIOButton* lowerHook) :
-                	ControlledMotor(r,n,m,e,t,l), upperHookSwitch(upperHook), lowerHookSwitch(lowerHook)
+                DigitalInput* l,
+                DigitalInput* lowerHook,
+                DigitalInput* upperHook) :
+                	ControlledMotor(r,n,m,e,t,l), lowerHookSwitch(lowerHook), upperHookSwitch(upperHook)
         {}
 		bool UpdateState(
 				float powerLevel,    //typically 1.0 for forward -1.0 for backward
 				float targetPosition,
 				HookSwitch hookSwitch=NoHookSwitch)
 		{
-			 if (powerLevel < 0.0 && lowerLimitSwitch->Get()){
+			 if (powerLevel < 0.0 && !lowerLimitSwitch->Get()){
 				motorController.Disable();
 				motor->Set(0.0);
+            	encoder->Reset();
 				encoder->Start();
 				return true;
 			}
@@ -180,8 +178,8 @@ public:
 			motorController.SetSetpoint(targetPosition);    
 			
 			float position = encoder->Get() / ClimberTicksPerInch;
-			if ( (hookSwitch == UpperHookSwitch && upperHookSwitch->Get())||
-				 (hookSwitch == LowerHookSwitch && lowerHookSwitch->Get())||
+			if ( (hookSwitch == UpperHookSwitch && !upperHookSwitch->Get())||
+				 (hookSwitch == LowerHookSwitch && !lowerHookSwitch->Get())||
 				 (hookSwitch == NoHookSwitch &&
 							targetPosition -0.5 <= position && position <= targetPosition + 0.5 ) ) {
 				motorController.Disable();
@@ -198,65 +196,48 @@ public:
 			return false;
 		}
     };
-    Climber* climber;
-    Climber* leftClimber;
-    Climber* rightClimber;
-    Jack* jack;
+    Log* log;
 
-    Drive* drive;
-    Control* control;
     BcdSwitch* bcd;
     int bcdValue;
 
-    Log* log;
+    Control* control;
+
+    Drive* drive;
     Encoder* leftDriveEncoder;
     Encoder* rightDriveEncoder;
+   
+    Compressor *compressor;
+    
+    Climber* climber;
+    Climber* leftClimber;
+    Climber* rightClimber;
+    
+    Jack* jack;
+
+    Relay* loaderMotor;
+    DigitalInput* loaderSwitch;
+    int loaderCount;
+
+    CANJaguar* shooterMotor;
+    
+    Relay* blowerMotor;
+
     double goalDistance;
     bool startingState;
+    
     Servo* cameraPivotMotor;
     Servo* cameraElevateMotor;
+    float cameraElevateAngle;
+    float cameraPivotAngle;
+    
+    Relay* lightRing;
 public:
     Robot() {
         log = new Log(this);
 
-        drive = new Drive(2, this);
-        drive->addMotor(Drive::Left, 2, 1);
-        drive->addMotor(Drive::Left, 3, 1);
-        drive->addMotor(Drive::Right, 4, -1);
-        drive->addMotor(Drive::Right, 5, -1);
-
-        rightDriveEncoder = new Encoder(1, 2, true);
-        leftDriveEncoder = new Encoder(3, 4, false);
-
-        leftClimber = new Climber(
-        	this,
-            "leftClimber",
-            new CANJaguar(6),
-            new Encoder(5, 6, false),
-            ClimberTicksPerInch,
-            new AnalogIOButton(0),//lower limit switch
-            new AnalogIOButton(1),//lower hook switch
-            new AnalogIOButton(2) );//upper hook switch
-        
-        rightClimber = new Climber(
-        	this,
-            "rightClimber",
-            new CANJaguar(7),
-            new Encoder(7, 8, false),
-            ClimberTicksPerInch,
-            new AnalogIOButton(3),//lower limit switch
-			new AnalogIOButton(4),//lower hook switch
-			new AnalogIOButton(5) );//upper hook switch	
-
-        jack = new Jack(
-        	this,
-        	"jack",
-        	new CANJaguar(8),
-        	new Encoder(9, 10, false),
-        	JackTicksPerInch,
-        	new AnalogIOButton(6));//lower limit switch);
-        
-        bcd = new BcdSwitch(11, 12, 13, 14);
+        bcd = new BcdSwitch(new DigitalInput(2,11), new DigitalInput(2,12),
+        					new DigitalInput(2,13), new DigitalInput(2,14));
         bcdValue = bcd->value();
 
         control = new Control(
@@ -265,30 +246,97 @@ public:
         control->setLeftScale(-1);
         control->setRightScale(-1);
         control->setGamepadScale(-1);
-        // Pwm ports
-        //Spike on 0
-        //Spike on 1
-        //Spike on 2
-        cameraPivotMotor = new Servo(9);
-        cameraElevateMotor = new Servo(10);
+
+        drive = new Drive(2, this);
+        drive->addMotor(Drive::Left, 2, 1);
+        drive->addMotor(Drive::Left, 3, 1);
+        drive->addMotor(Drive::Right, 4, -1);
+        drive->addMotor(Drive::Right, 5, -1);
+
+        rightDriveEncoder = new Encoder(1,1, 1,2, true);
+        leftDriveEncoder = new Encoder(1,3, 1,4, false);
+        
+        compressor = new Compressor(2,9, 2,3); //press, relay
+		compressor->Start();
+
+        leftClimber = new Climber(
+        	this,
+            "leftClimber",
+            new CANJaguar(6),
+            new Encoder(1,5, 1,6, false),
+            ClimberTicksPerInch,
+            new DigitalInput(2,1),//lower limit switch
+            new DigitalInput(2,2),//lower hook switch
+            new DigitalInput(2,3) );//upper hook switch
+        
+        rightClimber = new Climber(
+        	this,
+            "rightClimber",
+            new CANJaguar(7),
+            new Encoder(1,7, 1,8, false),
+            ClimberTicksPerInch,
+            new DigitalInput(2,4),//lower limit switch
+			new DigitalInput(2,5),//lower hook switch
+			new DigitalInput(2,6) );//upper hook switch	
+
+        jack = new Jack(
+        	this,
+        	"jack",
+        	new CANJaguar(8),
+        	new Encoder(9, 10, false),
+        	JackTicksPerInch,
+        	new DigitalInput(2,7));//lower limit switch);
+
+        loaderMotor = new Relay(2,1);
+        loaderSwitch = new DigitalInput(2,8);
+
+        shooterMotor = new CANJaguar(10);
+        
+        blowerMotor = new Relay(2,2);
+
+        cameraPivotMotor = new Servo(2,9);
+        cameraElevateMotor = new Servo(2,10);
+
+        lightRing = new Relay(2,4);
     }
     
     void init() {
-    	leftDriveEncoder->Start();
-		rightDriveEncoder->Start();
-		leftClimber->encoder->Start();
-		rightClimber->encoder->Start();
+        climber = NULL;
+        leftDriveEncoder->Reset();
+        leftDriveEncoder->Start();
+		rightDriveEncoder->Reset();
+        rightDriveEncoder->Start();
+		leftClimber->encoder->Reset();
+        leftClimber->encoder->Start();
+		rightClimber->encoder->Reset();
+        rightClimber->encoder->Start();
+		jack->encoder->Reset();
 		jack->encoder->Start();
 		bool leftDone = false;
 		bool rightDone = false;
 		bool jackDone = false;
-		while (!leftDone || !rightDone || !jackDone){
-			leftDone = leftClimber->UpdateState(-1.0, -30);
-			rightDone = rightClimber->UpdateState(-1.0, -30);
-			jackDone = jack->UpdateState(-1.0, -30);
+        bcdValue = bcd->value();
+        // Only do this for some BCD values?
+        while (!leftDone || !rightDone || !jackDone){
+			if (!leftDone)
+				leftDone = leftClimber->UpdateState(-1.0, -30);
+			if (!rightDone)
+				rightDone = rightClimber->UpdateState(-1.0, -30);
+			if (!jackDone)
+				jackDone = jack->UpdateState(-1.0, -30);
+	        log->info("Wait: Ll Rl jl: %d %d %d",
+	        		leftClimber->lowerLimitSwitch->Get(),
+	        		rightClimber->lowerLimitSwitch->Get(),
+	        		jack->lowerLimitSwitch->Get());
+	        log->print();
 		}
         climbState = NotInitialized;
-        bcdValue = bcd->value();
+        cameraElevateAngle =
+        		(cameraElevateMotor->GetMaxAngle()-cameraElevateMotor->GetMinAngle()) * 2/3;
+        cameraPivotAngle = 0;
+        cameraPivotMotor->SetAngle(cameraPivotAngle);
+        cameraElevateMotor->SetAngle(cameraElevateAngle);
+        loaderCount = 0;
     }
 
     void AutonomousInit() {
@@ -505,7 +553,9 @@ public:
 
     void TeleopPeriodic() {
     	//tbs change button number
-        if (control->button(2)|| climbState != NotInitialized) {
+        if ((control->gamepadButton(9) && control->gamepadButton(10)) ||	// start
+        			climbState != NotInitialized) {							// continue
+        	// Do we want a manual abort here?
             ClimbPeriodic();
             return;
         }
@@ -515,10 +565,65 @@ public:
         // control->setRightScale(.95);
         drive->setRight(control->right());
         drive->setScale(control->throttle());
-        drive->setReversed(control->toggleButton(11));
-        drive->setLowShift(control->gamepadToggleButton(10));
-        cameraPivotMotor->Set(control->gamepadToggleButton(8));
-        cameraElevateMotor->Set(control->gamepadToggleButton(7));
+        drive->setLowShift(control->button(1)); // right trigger
+        drive->setReversed(control->toggleButton(11)); // right JS button 11
+        
+        lightRing->Set(control->gamepadToggleButton(1) ? Relay::kForward : Relay::kOff );
+       
+        blowerMotor->Set(control->gamepadToggleButton(6) ? Relay::kOn : Relay::kOff );
+
+        // For the loader, if we are rotating, wait for at least 100 counts before
+        // checking the switch or adjusting motor power
+        if (loaderCount) {
+        	loaderCount--;
+        	//log->info("down %d", loaderCount);
+        } else {
+        	// If already rotating, and the switch trips, power down the motor
+        	if (!loaderSwitch->Get()) {
+        		loaderMotor->Set(Relay::kOff);
+            	//log->info("loader off");
+            	// If not rotating and the gamepad button is set, start rotating
+        	} else if (control->gamepadButton(7)) {
+        		loaderMotor->Set(Relay::kForward);
+        		loaderCount = 100;
+            	//log->info("loader start");
+        	} else if (control->gamepadButton(5)) {
+        		loaderMotor->Set(Relay::kReverse);
+        		loaderCount = 100;
+            	//log->info("loader start");
+        	} else {
+            	//log->info("loader idle");
+        	}
+        }
+
+        // For the shooter, spin it up or down based on the toggle
+        //
+        if (control->gamepadToggleButton(8)) {
+        	shooterMotor->Set(1.0);
+        	log->info("shooter on");
+        } else {
+        	shooterMotor->Set(0.0);        	
+        	log->info("shooter off");
+        }
+        
+        if (control->gamepadLeftVertical() > 0.05 ||
+        		control->gamepadLeftVertical() < -0.05) {
+        	cameraElevateAngle += control->gamepadLeftVertical()*5;
+			if (cameraElevateAngle < cameraElevateMotor->GetMinAngle())
+				cameraElevateAngle = cameraElevateMotor->GetMinAngle();
+			if (cameraElevateAngle > cameraElevateMotor->GetMaxAngle())
+				cameraElevateAngle = cameraElevateMotor->GetMaxAngle();
+        }
+        if (control->gamepadLeftHorizontal() > 0.05 ||
+        		control->gamepadLeftHorizontal() < -0.05) {
+        	cameraPivotAngle += control->gamepadLeftHorizontal()*5;
+			if (cameraPivotAngle < cameraPivotMotor->GetMinAngle())
+				cameraPivotAngle = cameraPivotMotor->GetMinAngle();
+			if (cameraPivotAngle > cameraPivotMotor->GetMaxAngle())
+				cameraPivotAngle = cameraPivotMotor->GetMaxAngle();
+        }
+        cameraPivotMotor->SetAngle(cameraPivotAngle);
+        cameraElevateMotor->SetAngle(cameraElevateAngle);
        
         // assorted debug
         //log->info("Shift %s", control->toggleButton(8) 
@@ -528,9 +633,23 @@ public:
         //log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
 
         double myTest = drive->rightPosition();
-        log->info("renc: %f\n", myTest);
+        //log->info("renc: %f", myTest);
         myTest = drive->leftPosition();
-        log->info("lenc: %f\n", myTest);
+        //log->info("lenc: %f", myTest);
+        //log->info("gplh %f %f", control->gamepadLeftHorizontal(), cameraPivotAngle);
+        //log->info("gplv %f %f", control->gamepadLeftVertical(), cameraElevateAngle);
+        //log->info("gprh %f", control->gamepadRightHorizontal());
+        //log->info("gprv %f", control->gamepadRightVertical());
+        //log->info("BCD: %d", bcd->value());
+        log->info("L3R3JL %d %d %d %d %d %d %d %d",
+        		leftClimber->lowerLimitSwitch->Get(),
+        		leftClimber->lowerHookSwitch->Get(),
+        		leftClimber->upperHookSwitch->Get(),
+        		rightClimber->lowerLimitSwitch->Get(),
+        		rightClimber->lowerHookSwitch->Get(),
+        		rightClimber->upperHookSwitch->Get(),
+        		jack->lowerLimitSwitch->Get(),
+        		loaderSwitch->Get());
         log->print();
         
     }

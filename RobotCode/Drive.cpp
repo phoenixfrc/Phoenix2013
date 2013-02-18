@@ -105,12 +105,12 @@ void Drive::setLowShift(bool set) {
 void Drive::addMotor(Side side, int port, double defaultScale) {
 	MotorProperty m = { new CANJaguar(port), defaultScale };
 	if (side == Left) {
-		if (leftMotors_.empty())
-			m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
+		//if (leftMotors_.empty())
+		//	m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
 		leftMotors_.push_back(m);
 	} else {
-		if (rightMotors_.empty())
-			m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
+		//if (rightMotors_.empty())
+		//	m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
 		rightMotors_.push_back(m);
 	}
 }

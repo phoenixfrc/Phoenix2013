@@ -38,13 +38,22 @@ double Control::right() {
 	return right_->GetY() * rightScale_;
 }
 
-double Control::gamepadLeft() {
-	return gamepad_->GetY() * gamepadScale_;
+double Control::gamepadLeftHorizontal() {
+	return gamepad_->GetX() * gamepadScale_ * -1.0;
 }
 
-double Control::gamepadRight() {
+double Control::gamepadLeftVertical() {
+	return gamepad_->GetY() * gamepadScale_ * -1.0;
+}
+
+double Control::gamepadRightHorizontal() {
 	// y axis on second stick
-	return gamepad_->GetRawAxis(4);
+	return gamepad_->GetRawAxis(3)*-1.0;
+}
+
+double Control::gamepadRightVertical() {
+	// y axis on second stick
+	return gamepad_->GetRawAxis(4)*-1.0;
 }
 
 double Control::throttle() {
