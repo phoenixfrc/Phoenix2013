@@ -5,19 +5,17 @@
 #include "Encoder.h"
 #include "Log.h"
 
-#define DriveTicksPerInch 18.1
+#define DriveDistancePerPulse (1/18.1)
+
+// Climber - 
+#define ClimberDistancePerPulse (1.0/500.0)
 
 // This is not a real value!  Just a temporary definition
-#define ClimberTicksPerInch 1
+#define JackDistancePerPulse (1.0/500)
 
-// This is not a real value!  Just a temporary definition
-#define JackTicksPerInch 1
-
-static const int DisplayInterval = 50;
+static const int DisplayInterval = 2;
 static int displayCount = 0;
-static bool display() {
-	return displayCount % DisplayInterval == 0;
-}
+static bool display() { return true; }
 
 class BcdSwitch {
     DigitalInput *_port[4];
@@ -109,7 +107,7 @@ public:
         const char* name;
         CANJaguar* motor;
         Encoder* encoder;
-        float ticksPerInch;
+        double distancePerPulse;
         DigitalInput* lowerLimitSwitch;
         PIDController motorController;
         ControlledMotor(
@@ -117,16 +115,18 @@ public:
 				const char* n,
 				CANJaguar* m,
 				Encoder* e,
-				float t,
+				double dpp,
 				DigitalInput* l) :
 			robot(r), name(n), motor(m), encoder(e),
-			ticksPerInch(t),lowerLimitSwitch(l),
+			distancePerPulse(dpp),lowerLimitSwitch(l),
 			motorController(.1, .001, 0.0, encoder, motor)
-		{}
+		{
+        	encoder->SetDistancePerPulse(dpp);
+		}
 
         bool UpdateState(
                 float powerLevel,    //typically 1.0 for forward -1.0 for backward
-                float targetPosition)
+                double targetPosition)
         {
             if (powerLevel < 0.0 && !lowerLimitSwitch->Get()){
             	motorController.Disable();
@@ -139,7 +139,7 @@ public:
             	motorController.Enable();
             motorController.SetSetpoint(targetPosition);    
             
-            float position = encoder->Get() / ticksPerInch;
+            double position = encoder->GetDistance();
             if (targetPosition -0.5 <= position && position <= targetPosition + 0.5 ) {
                 motorController.Disable();
             	motor->Set(0.0);
@@ -155,9 +155,9 @@ public:
 			const char* n,
 			CANJaguar* m,
 			Encoder* e,
-			float t,
+			double dpp,
 			DigitalInput* l) :
-				ControlledMotor(r,n,m,e,t,l)
+				ControlledMotor(r,n,m,e,dpp,l)
 	{}
     };
     class Climber: public ControlledMotor {
@@ -169,15 +169,15 @@ public:
                 const char* n,
                 CANJaguar* m,
                 Encoder* e,
-                float t,
+                double dpp,
                 DigitalInput* l,
                 DigitalInput* lowerHook,
                 DigitalInput* upperHook) :
-                	ControlledMotor(r,n,m,e,t,l), lowerHookSwitch(lowerHook), upperHookSwitch(upperHook)
+                	ControlledMotor(r,n,m,e,dpp,l), lowerHookSwitch(lowerHook), upperHookSwitch(upperHook)
         {}
 		bool UpdateState(
 				float powerLevel,    //typically 1.0 for forward -1.0 for backward
-				float targetPosition,
+				double targetPosition,
 				HookSwitch hookSwitch=NoHookSwitch)
 		{
 			 if (powerLevel < 0.0 && !lowerLimitSwitch->Get()){
@@ -191,7 +191,7 @@ public:
 				motorController.Enable();
 			motorController.SetSetpoint(targetPosition);    
 			
-			float position = encoder->Get() / ClimberTicksPerInch;
+			double position = encoder->GetDistance();
 			if ( (hookSwitch == UpperHookSwitch && !upperHookSwitch->Get())||
 				 (hookSwitch == LowerHookSwitch && !lowerHookSwitch->Get())||
 				 (hookSwitch == NoHookSwitch &&
@@ -231,11 +231,12 @@ public:
 
     Relay* loaderMotor;
     DigitalInput* loaderSwitch;
-    int loaderCount;
+    bool loading;
+    bool loaderDisengageDetected;
 
     CANJaguar* shooterMotor;
     
-    Relay* blowerMotor;
+    CANJaguar* blowerMotor;
 
     double goalDistance;
     bool startingState;
@@ -250,10 +251,10 @@ public:
     Robot() {
         log = new Log(this);
 
-/*      bcd = new BcdSwitch(new DigitalInput(2,11), new DigitalInput(2,12),
+        bcd = new BcdSwitch(new DigitalInput(2,11), new DigitalInput(2,12),
         					new DigitalInput(2,13), new DigitalInput(2,14));
         bcdValue = bcd->value();
-*/
+
         control = new Control(
                 new Joystick(1), new Joystick(2), new Joystick(3), 
                 Control::Tank, log);
@@ -261,14 +262,14 @@ public:
         control->setRightScale(-1);
         control->setGamepadScale(-1);
 
-        drive = new Drive(2, this);
+        drive = new Drive(this, 1,2);
         drive->addMotor(Drive::Left, 2, 1);
         drive->addMotor(Drive::Left, 3, 1);
         drive->addMotor(Drive::Right, 4, -1);
         drive->addMotor(Drive::Right, 5, -1);
 
-        rightDriveEncoder = new Encoder(1,1, 1,2, true, Encoder::k2X);
-        leftDriveEncoder = new Encoder(1,3, 1,4, false, Encoder::k2X);
+        rightDriveEncoder = new Encoder(1,1, 1,2, true);
+        leftDriveEncoder = new Encoder(1,3, 1,4, false);
         
         compressor = new Compressor(2,9, 2,3); //press, relay
 		compressor->Start();
@@ -277,8 +278,8 @@ public:
         	this,
             "leftClimber",
             new CANJaguar(6),
-            new Encoder(1,5, 1,6, false),
-            ClimberTicksPerInch,
+            new Encoder(1,5, 1,6, true),
+            ClimberDistancePerPulse,
             new DigitalInput(2,1),//lower limit switch
             new DigitalInput(2,2),//lower hook switch
             new DigitalInput(2,3) );//upper hook switch
@@ -287,8 +288,8 @@ public:
         	this,
             "rightClimber",
             new CANJaguar(7),
-            new Encoder(1,7, 1,8, false),
-            ClimberTicksPerInch,
+            new Encoder(1,7, 1,8, true),
+            ClimberDistancePerPulse,
             new DigitalInput(2,4),//lower limit switch
 			new DigitalInput(2,5),//lower hook switch
 			new DigitalInput(2,6) );//upper hook switch	
@@ -297,8 +298,8 @@ public:
         	this,
         	"jack",
         	new CANJaguar(8),
-        	new Encoder(1,9, 1,10, false),
-        	JackTicksPerInch,
+        	new Encoder(1,9, 1,10, true, Encoder::k2X),	// Only 4 encoders can be k4X, jack loses - we don't need negative values
+        	JackDistancePerPulse,
         	new DigitalInput(2,7));//lower limit switch);
 
         loaderMotor = new Relay(2,1);
@@ -306,7 +307,7 @@ public:
 
         shooterMotor = new CANJaguar(10);
         
-        blowerMotor = new Relay(2,2);
+        blowerMotor = new CANJaguar(9);
 
         cameraPivotMotor = new Servo(1,9);
         cameraElevateMotor = new Servo(1,10);
@@ -326,11 +327,11 @@ public:
         rightClimber->encoder->Start();
 		jack->encoder->Reset();
 		jack->encoder->Start();
+        bcdValue = bcd->value();
 #if 0
 		bool leftDone = false;
 		bool rightDone = false;
 		bool jackDone = false;
-        //bcdValue = bcd->value();
         // Only do this for some BCD values?
         while (!leftDone || !rightDone || !jackDone){
 			if (!leftDone)
@@ -352,7 +353,8 @@ public:
         cameraPivotAngle = 0;
         cameraPivotMotor->SetAngle(cameraPivotAngle);
         cameraElevateMotor->SetAngle(cameraElevateAngle);
-        loaderCount = 0;
+        loading = false;
+        loaderDisengageDetected = false;
     }
 
     void AutonomousInit() {
@@ -361,21 +363,21 @@ public:
     }
     
     void AutonomousPeriodic() { 
-        double currentDist = drive->leftPosition() / DriveTicksPerInch;
-        double remainingMoveDist = goalDistance - currentDist;
-        if(remainingMoveDist>0){
-            drive->setLeft(.6);
-            drive->setRight(.5);
-        } else{
-            drive->setLeft(0);
-            drive->setRight(0);
-        }
-        double dist;
-        dist = drive->rightPosition() / DriveTicksPerInch;
-        log->info("renc in inches: %f\n", dist);
-        dist = drive->leftPosition() / DriveTicksPerInch;
-        log->info("lenc in inches: %f\n", dist);
-        log->print();
+        //double currentDist = drive->leftPosition() / DriveTicksPerInch;
+        //double remainingMoveDist = goalDistance - currentDist;
+        //if(remainingMoveDist>0){
+        //    drive->setLeft(.6);
+        //    drive->setRight(.5);
+        //} else{
+        //    drive->setLeft(0);
+        //    drive->setRight(0);
+        //}
+        //double dist;
+        //dist = drive->rightPosition() / DriveTicksPerInch;
+        //log->info("renc in inches: %f\n", dist);
+        //dist = drive->leftPosition() / DriveTicksPerInch;
+        //log->info("lenc in inches: %f\n", dist);
+        //log->print();
     }
 
     void AutonomousDisabled() {
@@ -405,7 +407,7 @@ public:
     void ClimbPeriodic() {
     	displayCount++;
         //amount to move past the bar to extend hook
-        static const float CatchDistance = 6.0f;
+        static const float CatchDistance = 2.0f;
         // This is the distance in inches the climber must be initially raised
         static const float InitialClimberPosition = 8.0f + CatchDistance; // Inches
         static const float LowerHookPosition = 17.f + CatchDistance;
@@ -588,36 +590,32 @@ public:
         
         lightRing->Set(control->gamepadToggleButton(4) ? Relay::kForward : Relay::kOff );
        
-        blowerMotor->Set(control->gamepadToggleButton(6) ? Relay::kOn : Relay::kOff );
+        blowerMotor->Set(control->gamepadToggleButton(6) ? 1.0 : 0.0 );
 
         // For the loader, if we are rotating, wait for at least 100 counts before
         // checking the switch or adjusting motor power
-        if (loaderCount) {
-        	loaderCount--;
-        	//log->info("down %d", loaderCount);
-        } else {
+        if (loading) {
+        	if (loaderSwitch->Get()) {
+        		loaderDisengageDetected = true;
+        	}
         	// If already rotating, and the switch trips, power down the motor
-        	if (!loaderSwitch->Get()) {
-        		loaderMotor->Set(Relay::kOff);
-            	//log->info("loader off");
-            	// If not rotating and the gamepad button is set, start rotating
-        	} else if (control->gamepadButton(7)) {
-        		loaderMotor->Set(Relay::kForward);
-        		loaderCount = 100;
-            	//log->info("loader start");
-        	} else if (control->gamepadButton(5)) {
+        	if (loaderDisengageDetected && !loaderSwitch->Get()) {
+				loaderMotor->Set(Relay::kOff);
+				loading = false;
+        	}
+        } else {
+           	// If not rotating and the gamepad button is set, start rotating
+        	if (control->gamepadButton(7)) {
         		loaderMotor->Set(Relay::kReverse);
-        		loaderCount = 100;
-            	//log->info("loader start");
-        	} else {
-            	//log->info("loader idle");
+        		loading = true;
+        		loaderDisengageDetected = false;
         	}
         }
 
         // For the shooter, spin it up or down based on the toggle
         //
         if (control->gamepadToggleButton(8)) {
-        	shooterMotor->Set(1.0);
+        	shooterMotor->Set(-0.8);
         	//log->info("shooter on");
         } else {
         	shooterMotor->Set(0.0);        	
@@ -660,21 +658,22 @@ public:
         //log->info("pidf: %.2f", arm->pidFactor());
         //log->info("piden: %s", arm->isPidEnabled() ? "true" : "false");
 
-        double myTest = drive->rightPosition();
+        //double myTest = drive->rightPosition();
         //log->info("renc: %f", myTest);
-        myTest = drive->leftPosition();
+        //myTest = drive->leftPosition();
         //log->info("lenc: %f", myTest);
         //log->info("gplh %f %f", control->gamepadLeftHorizontal(), cameraPivotAngle);
         //log->info("gplv %f %f", control->gamepadLeftVertical(), cameraElevateAngle);
         //log->info("gprh %f", control->gamepadRightHorizontal());
         //log->info("gprv %f", control->gamepadRightVertical());
-        //log->info("BCD: %d", bcd->value());
         if (display()) {
-        	log->info("LRJ %d %d %d",
-        			leftClimber->encoder->Get(),
-        			rightClimber->encoder->Get(),
-        			jack->encoder->Get());
-        	log->info("L3R3JL %d %d %d %d %d %d %d %d",
+    		log->info("lg %d ldd %d", loading, loaderDisengageDetected);
+            //log->info("BCD: %d", bcd->value());
+            log->info("LRJ %f %f %f",
+        			leftClimber->encoder->GetDistance(),
+        			rightClimber->encoder->GetDistance(),
+        			jack->encoder->GetDistance());
+        	log->info("LRJL %d %d %d %d %d %d %d %d",
         		leftClimber->lowerLimitSwitch->Get(),
         		leftClimber->lowerHookSwitch->Get(),
         		leftClimber->upperHookSwitch->Get(),

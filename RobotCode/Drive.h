@@ -24,15 +24,16 @@ class Drive {
 	double scale_;
 	bool reversed_;
 	Robot *robot_;
-	Solenoid *shifter_;
-	
+	Solenoid *lowShifter_;
+	Solenoid *highShifter_;
+
 	// update state
 	void updateLight();
 	
 public:
 	enum Side { Left, Right };
-	Drive(int shifterPort, Robot *config);
-	Drive(Robot *config);
+	Drive(Robot *config, int lowShifterPort, int highShifterPort);
+//	Drive(Robot *config);
 	virtual ~Drive();
 	
 	// power ctl

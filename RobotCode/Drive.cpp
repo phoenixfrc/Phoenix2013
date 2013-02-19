@@ -2,20 +2,21 @@
 #include "Log.h"
 #include <algorithm>
 
-Drive::Drive(int shifterPort, Robot *robot) { 
+Drive::Drive(Robot *robot, int lowShifterPort, int highShifterPort) { 
 	this->robot_ = robot;
 	this->scale_ = 1;
 	this->reversed_ = false;
-	shifter_ = new Solenoid(shifterPort);
+	lowShifter_ = new Solenoid(lowShifterPort);
+	highShifter_ = new Solenoid(highShifterPort);
 }
-
+/*
 Drive::Drive(Robot *robot) {
 	this->robot_ = robot;
 	this->scale_ = 1;
 	this->reversed_ = false;
 	shifter_ = NULL;
 }
-
+*/
 Drive::~Drive() {
 	MotorVector::iterator iter;
 	for(iter = leftMotors_.begin(); iter != leftMotors_.end(); ++iter)
@@ -54,13 +55,14 @@ double Drive::rightCurrent() {
 	return motorCurrent(reversed_ ? rightMotors_ : leftMotors_);
 }
 
-double Drive::leftPosition() {
-	return position(reversed_ ? leftMotors_ : rightMotors_);
-}
+// For encoders hooked to jags
+//double Drive::leftPosition() {
+//	return position(reversed_ ? leftMotors_ : rightMotors_);
+//}
 
-double Drive::rightPosition() {
-	return position(reversed_ ? rightMotors_ : leftMotors_);
-}
+//double Drive::rightPosition() {
+//	return position(reversed_ ? rightMotors_ : leftMotors_);
+//}
 
 double Drive::current() {
 	return max(leftCurrent(), rightCurrent());
@@ -86,14 +88,21 @@ double Drive::motorCurrent(const MotorVector &motors) {
 	return total / motors.size();
 }
 
-double Drive::position(const MotorVector &motors) {
-	return motors[0].motor->GetPosition();
-}
+// For encoders hooked to jags
+//double Drive::position(const MotorVector &motors) {
+//	return motors[0].motor->GetPosition();
+//}
 
 void Drive::setShiftMode(ShiftMode mode) { this->mode_ = mode; }
 
 void Drive::setLowShift(bool set) {
-	shifter_->Set(set); 
+	if (set) {
+		lowShifter_->Set(true);
+		highShifter_->Set(false);
+	} else {
+		lowShifter_->Set(false);
+		highShifter_->Set(true);
+	}
 }
 
 /**
