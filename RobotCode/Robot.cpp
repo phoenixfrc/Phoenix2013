@@ -235,10 +235,12 @@ public:
     bool loaderDisengageDetected;
 
     CANJaguar* shooterMotor;
+    double shooterMotorSpeed;
     
     CANJaguar* blowerMotor;
 
     double goalDistance;
+    int autonomousShooterDelay;
     bool startingState;
     
     Servo* cameraPivotMotor;
@@ -355,15 +357,34 @@ public:
         cameraElevateMotor->SetAngle(cameraElevateAngle);
         loading = false;
         loaderDisengageDetected = false;
+        //This is a rough guess of motor power it should be based on voltage
+        shooterMotorSpeed = 0.9;
     }
 
     void AutonomousInit() {
         init();
         goalDistance = 120;
+        autonomousShooterDelay = 0;
     }
     
     void AutonomousPeriodic() { 
-        //double currentDist = drive->leftPosition() / DriveTicksPerInch;
+        //the following is what will be the automous code
+    	//double currentDist = drive->leftPosition() / DriveTicksPerInch;
+    	//if(goalDistance <= currentDist){
+    	//		drive->setLeft(.6);
+        //		drive->setRight(.5);
+    	//}else{
+    	//		drive->setLeft(0);
+        //		drive->setRight(0);
+    	//		shooterMotor->Set(-0.8)
+    	//		blowerMotor->Set(1.0)
+    	//		autonomousCounter++ // this incriments the counter by one
+    	//		if (autonomousCounter >= 400)
+    	//			loaderMotor->set(relay:kReverse)
+    	//
+    	//
+    	//the following was the automous code
+    	//double currentDist = drive->leftPosition() / DriveTicksPerInch;
         //double remainingMoveDist = goalDistance - currentDist;
         //if(remainingMoveDist>0){
         //    drive->setLeft(.6);
@@ -588,9 +609,12 @@ public:
         drive->setLowShift(control->button(1)); // right trigger
         drive->setReversed(control->toggleButton(11)); // right JS button 11
         
+        //turn light on or off
         lightRing->Set(control->gamepadToggleButton(4) ? Relay::kForward : Relay::kOff );
        
         blowerMotor->Set(control->gamepadToggleButton(6) ? 1.0 : 0.0 );
+       
+
 
         // For the loader, if we are rotating, wait for at least 100 counts before
         // checking the switch or adjusting motor power
@@ -606,16 +630,27 @@ public:
         } else {
            	// If not rotating and the gamepad button is set, start rotating
         	if (control->gamepadButton(7)) {
-        		loaderMotor->Set(Relay::kReverse);
+        		loaderMotor->Set(Relay::kForward);
         		loading = true;
         		loaderDisengageDetected = false;
         	}
         }
-
+        
+        if (control->gamepadToggleButton(5)){
+        	if (control->gamepadRightVertical() > 0.05 ||
+				control->gamepadRightVertical() < -0.05) {
+				shooterMotorSpeed += control->gamepadRightVertical()*5;
+				if (shooterMotorSpeed < 0.5)
+					shooterMotorSpeed = 0.5;
+				if (shooterMotorSpeed > 1)
+					shooterMotorSpeed = 1;
+		   }
+        }
+        
         // For the shooter, spin it up or down based on the toggle
         //
         if (control->gamepadToggleButton(8)) {
-        	shooterMotor->Set(-0.8);
+        	shooterMotor->Set(-shooterMotorSpeed);// negative because motor is wired backwerds
         	//log->info("shooter on");
         } else {
         	shooterMotor->Set(0.0);        	
