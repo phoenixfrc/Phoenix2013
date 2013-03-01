@@ -5,7 +5,7 @@
 #include <vector>
 
 struct MotorProperty {
-	CANJaguar *motor;
+	Jaguar *motor;
 	double defaultScale;
 };
 

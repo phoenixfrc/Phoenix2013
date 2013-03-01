@@ -83,7 +83,7 @@ double Drive::motorCurrent(const MotorVector &motors) {
 	MotorVector::const_iterator iter;
 	for(iter = motors.begin(); iter != motors.end(); ++iter) {
 		const MotorProperty &m = *iter;
-		total += m.motor->GetOutputCurrent();
+//		total += m.motor->GetOutputCurrent();
 	}
 	return total / motors.size();
 }
@@ -112,7 +112,7 @@ void Drive::setLowShift(bool set) {
  * @param defaultScale scale for the motor to run at
  */
 void Drive::addMotor(Side side, int port, double defaultScale) {
-	MotorProperty m = { new CANJaguar(port), defaultScale };
+	MotorProperty m = { new Jaguar(2, port), defaultScale };
 	if (side == Left) {
 		//if (leftMotors_.empty())
 		//	m.motor->SetPositionReference(CANJaguar::kPosRef_QuadEncoder);
