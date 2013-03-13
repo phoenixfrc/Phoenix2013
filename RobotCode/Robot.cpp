@@ -5,6 +5,10 @@
 #include "Encoder.h"
 #include "Log.h"
 
+// If the climber is within this distance of the target in either direction,
+// it is considered "good enough"
+#define ClimberCloseTolerance 0.5
+
 #define DriveDistancePerPulse (1/18.1)
 
 // Climber - 
@@ -22,10 +26,10 @@ class BcdSwitch {
 public:
     BcdSwitch(DigitalInput* port1, DigitalInput* port2,
     				DigitalInput* port3, DigitalInput* port4) {
-        this->_port[0] = port1;
-        this->_port[1] = port2;
-        this->_port[2] = port3;
-        this->_port[3] = port4;
+        _port[0] = port1;
+        _port[1] = port2;
+        _port[2] = port3;
+        _port[3] = port4;
     }
     int value() {
         int ret = 0;
@@ -125,6 +129,18 @@ public:
         	encoder->SetDistancePerPulse(dpp);
 		}
 
+    };
+    class Jack: public ControlledMotor {
+	public: 
+    	Jack(
+    		Robot* r,
+			const char* n,
+			CANJaguar* m,
+			Encoder* e,
+			double dpp,
+			DigitalInput* l) :
+				ControlledMotor(r,n,m,e,dpp,l)
+    	{}
         bool UpdateState(
                 float powerLevel,    //typically 1.0 for forward -1.0 for backward
                 double targetPosition)
@@ -137,14 +153,20 @@ public:
             	encoder->Start();
             	return true;
             }
+            double position = encoder->GetDistance();
             if (motorController) {
 				if (!motorController->IsEnabled())
 					motorController->Enable();
 				motorController->SetSetpoint(targetPosition);
+            } else {
+            	if (position < targetPosition-ClimberCloseTolerance) {
+            		motor->Set(1.0);
+            	} else if (position > targetPosition+ClimberCloseTolerance){
+            		motor->Set(-1.0);            		
+            	}
             }
-            
-            double position = encoder->GetDistance();
-            if (targetPosition -0.5 <= position && position <= targetPosition + 0.5 ) {
+
+            if (targetPosition -ClimberCloseTolerance <= position && position <= targetPosition + ClimberCloseTolerance ) {
             	if (motorController) {
             		motorController->Disable();
             	}
@@ -153,18 +175,7 @@ public:
             }
             return false;
         }
-    };
-    class Jack: public ControlledMotor {
-	public: 
-    	Jack(
-    		Robot* r,
-			const char* n,
-			CANJaguar* m,
-			Encoder* e,
-			double dpp,
-			DigitalInput* l) :
-				ControlledMotor(r,n,m,e,dpp,l)
-	{}
+
     };
     class Climber: public ControlledMotor {
 	public:
@@ -196,17 +207,23 @@ public:
 				encoder->Start();
 				return true;
 			}
+			double position = encoder->GetDistance();
 			if (motorController) {
 				if (!motorController->IsEnabled())
 					motorController->Enable();
 				motorController->SetSetpoint(targetPosition);
+			} else {
+            	if (position < targetPosition-ClimberCloseTolerance) {
+            		motor->Set(1.0);
+            	} else if (position > targetPosition+ClimberCloseTolerance){
+            		motor->Set(-1.0);            		
+            	}
 			}
-			
-			double position = encoder->GetDistance();
+
 			if ( (hookSwitch == UpperHookSwitch && !upperHookSwitch->Get())||
 				 (hookSwitch == LowerHookSwitch && !lowerHookSwitch->Get())||
 				 (hookSwitch == NoHookSwitch &&
-							targetPosition -0.5 <= position && position <= targetPosition + 0.5 ) ) {
+							targetPosition -ClimberCloseTolerance <= position && position <= targetPosition + ClimberCloseTolerance ) ) {
 				if (motorController) {
 					motorController->Disable();
 				}
@@ -283,8 +300,8 @@ public:
         drive->addMotor(Drive::Right, 4, 1);
         drive->addMotor(Drive::Right, 5, 1);
 
-        rightDriveEncoder = new Encoder(1,1, 1,2, true);
-        leftDriveEncoder = new Encoder(1,3, 1,4, false);
+        rightDriveEncoder = new Encoder(1,1, 1,2, true, Encoder::k2X);
+        leftDriveEncoder = new Encoder(1,3, 1,4, false, Encoder::k2X);
         
         //compressor = new Compressor(2,9, 2,3); //press, relay
 		//compressor->Start();
@@ -313,7 +330,7 @@ public:
         	this,
         	"jack",
         	new CANJaguar(8),
-        	new Encoder(1,9, 1,10, true, Encoder::k2X),	// Only 4 encoders can be k4X, jack loses - we don't need negative values
+        	new Encoder(1,9, 1,10, false),
         	JackDistancePerPulse,
         	new DigitalInput(2,7));//lower limit switch);
 
@@ -453,7 +470,7 @@ public:
         static const float LowerHookPosition = 16.4f + CatchDistance;
         static const float UpperHookPosition = 16.4f + CatchDistance;
         // This is the distance in inches the jack must be raised
-        static const float JackPosition = 15.0f;
+        static const float JackPosition = 850.0f;
         // Distance to pull down on the grabber before it is expected to engage.
         // If it does NOT engage in this distance, that suggests something may be wrong
         // and we should abort.
@@ -472,12 +489,13 @@ public:
         case Initializing: {
             bool leftDone = leftClimber->UpdateState(1.0, InitialClimberPosition);
             bool rightDone = rightClimber->UpdateState(1.0, InitialClimberPosition);
+        	bool jackDone = jack->UpdateState(1.0, JackPosition);
             startingState = false;
             // moving climbers into initial position
-            if (leftDone && rightDone) {
+            if (leftDone && rightDone && jackDone) {
                 setClimbState(InitialGrab);
-            	// TEMPORARILY DISABLED!!!
-                // setClimbState(DeployingJack);
+            	// Jack merged in to initializing
+                //setClimbState(DeployingJack);
             }
             break; }
         case DeployingJack: {
@@ -507,9 +525,10 @@ public:
             //Note that this may run into the bottom hard
             bool leftDone = leftClimber->UpdateState(-1.0, 0, NoHookSwitch);
             bool rightDone = rightClimber->UpdateState(-1.0, 0, NoHookSwitch);
-            startingState = false;
+        	//bool jackDone = jack->UpdateState(-1.0, 0);	// Return jack to original position
+        	startingState = false;
             // moving climbers into initial position
-            if (leftDone && rightDone) {
+            if (leftDone && rightDone /*&& jackDone*/) {
                 setClimbState(Abort);
                 // TEMPORARILY DISABLED!!!
                 // setClimbState(MoveArmUpToMiddle);
@@ -742,7 +761,7 @@ public:
         	}
         }
         if (control->gamepadToggleButton(2)) {
-        	jack->motor->Set(control->gamepadRightVertical());
+        	jack->motor->Set(-control->gamepadRightVertical());
         }
 
         // assorted debug
