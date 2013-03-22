@@ -14,11 +14,10 @@
 // Climber - 
 #define ClimberDistancePerPulse (1.0/490.0)
 
-// This is not a real value!  Just a temporary definition
-#define JackDistancePerPulse (1.0/490)
 
 static const int DisplayInterval = 2;
 static int displayCount = 0;
+//static int currentDistance = 0;
 static bool display() { return true; }
 
 class BcdSwitch {
@@ -52,20 +51,7 @@ public:
     
     enum ClimbState {
         NotInitialized,    // climbers not yet deployed at all
-        Initializing,    // moving climbers into initial position
-        DeployingJack,    //
         InitialGrab,     // Pulling both arms down enough to latch (low power consumption)
-        InitialLift,    // Continue pulling, but now high power consumption
-        // The follow series repeats
-        MoveArmUpToMiddle,
-        GrabMiddle,
-        PullUpToMiddle,
-        MoveArmUpToTop,
-        GrabTop,
-        PullUpToTop,
-        FinalLift,
-        FinalShooting,
-        Finished,
         Abort,
             ClimbStateLast
     };
@@ -73,19 +59,7 @@ public:
     static const char* ClimbStateString(ClimbState climbState) {
         static const char* climbStateString[ClimbStateLast] = {
             "NotInitialized",
-            "Initializing",
-            "DeployingJack",
             "InitialGrab",
-            "InitialLift",
-            "MoveArmUpToMiddle",
-            "GrabMiddle",
-            "PullUpToMiddle",
-            "MoveArmUpToTop",
-            "GrabTop",
-            "PullUpToTop",
-            "FinalLift",
-            "FinalShooting",
-            "Finished",
             "Abort"
         };
         return climbStateString[climbState];
@@ -104,7 +78,6 @@ public:
         };
         return barString[bar];
     }
-    // Generalize this to "Actuator" or something that would also cover the Jack?
     class ControlledMotor{
     public:
     	Robot* robot;
@@ -128,53 +101,6 @@ public:
         	motorController = new PIDController(.1, .001, 0.0, encoder, motor);
         	encoder->SetDistancePerPulse(dpp);
 		}
-
-    };
-    class Jack: public ControlledMotor {
-	public: 
-    	Jack(
-    		Robot* r,
-			const char* n,
-			CANJaguar* m,
-			Encoder* e,
-			double dpp,
-			DigitalInput* l) :
-				ControlledMotor(r,n,m,e,dpp,l)
-    	{}
-        bool UpdateState(
-                float powerLevel,    //typically 1.0 for forward -1.0 for backward
-                double targetPosition)
-        {
-            if (powerLevel < 0.0 && !lowerLimitSwitch->Get()){
-            	if (motorController)
-            		motorController->Disable();
-            	motor->Set(0.0);
-            	encoder->Reset();
-            	encoder->Start();
-            	return true;
-            }
-            double position = encoder->GetDistance();
-            if (motorController) {
-				if (!motorController->IsEnabled())
-					motorController->Enable();
-				motorController->SetSetpoint(targetPosition);
-            } else {
-            	if (position < targetPosition-ClimberCloseTolerance) {
-            		motor->Set(1.0);
-            	} else if (position > targetPosition+ClimberCloseTolerance){
-            		motor->Set(-1.0);            		
-            	}
-            }
-
-            if (targetPosition -ClimberCloseTolerance <= position && position <= targetPosition + ClimberCloseTolerance ) {
-            	if (motorController) {
-            		motorController->Disable();
-            	}
-            	motor->Set(0.0);
-                return true;
-            }
-            return false;
-        }
 
     };
     class Climber: public ControlledMotor {
@@ -256,8 +182,6 @@ public:
     Climber* climber;
     Climber* leftClimber;
     Climber* rightClimber;
-    
-    Jack* jack;
 
     Relay* loaderMotor;
     DigitalInput* loaderSwitch;
@@ -326,14 +250,6 @@ public:
 			new DigitalInput(2,5),//lower hook switch
 			new DigitalInput(2,6) );//upper hook switch	
 
-        jack = new Jack(
-        	this,
-        	"jack",
-        	new CANJaguar(8),
-        	new Encoder(1,9, 1,10, false),
-        	JackDistancePerPulse,
-        	new DigitalInput(2,7));//lower limit switch);
-
         loaderMotor = new Relay(2,1);
         loaderSwitch = new DigitalInput(2,8);
 
@@ -347,7 +263,7 @@ public:
         lightRing = new Relay(2,4);
     }
     
-    // WHen robot is enable
+    // WHen robot is enabled
     void init() {
         log->info("initializing");
         log->print();
@@ -362,26 +278,19 @@ public:
         //rightClimber->motorController->Disable();
         rightClimber->encoder->Reset();
         rightClimber->encoder->Start();
-        //jack->motorController->Disable();
-		jack->encoder->Reset();
-		jack->encoder->Start();
         bcdValue = bcd->value();
 #if 0
 		bool leftDone = false;
 		bool rightDone = false;
-		bool jackDone = false;
         // Only do this for some BCD values?
-        while (!leftDone || !rightDone || !jackDone){
+        while (!leftDone || !rightDone){
 			if (!leftDone)
 				leftDone = leftClimber->UpdateState(-1.0, -30);
 			if (!rightDone)
 				rightDone = rightClimber->UpdateState(-1.0, -30);
-			if (!jackDone)
-				jackDone = jack->UpdateState(-1.0, -30);
-	        log->info("Wait: Ll Rl jl: %d %d %d",
+	        log->info("Wait: Ll Rl: %d %d",
 	        		leftClimber->lowerLimitSwitch->Get(),
-	        		rightClimber->lowerLimitSwitch->Get(),
-	        		jack->lowerLimitSwitch->Get());
+	        		rightClimber->lowerLimitSwitch->Get());
 	        log->print();
 		}
 #endif
@@ -404,39 +313,21 @@ public:
     }
     
     void AutonomousPeriodic() { 
-        //the following is what will be the automous code
-    	//double currentDist = drive->leftPosition() / DriveTicksPerInch;
-    	//if(goalDistance <= currentDist){
-    	//		drive->setLeft(.6);
-        //		drive->setRight(.5);
-    	//}else{
-    	//		drive->setLeft(0);
-        //		drive->setRight(0);
-    	//		shooterMotor->Set(-0.8)
-    	//		blowerMotor->Set(1.0)
-    	//		autonomousCounter++ // this incriments the counter by one
-    	//		if (autonomousCounter >= 400)
-    	//			loaderMotor->set(relay:kReverse)
     	//
+    	//currentDistance = leftDriveEncoder->Get();
+    	  //drive->leftMotor->Set();
+    	  //drive->rightMotor->Set();
     	//
-    	//the following was the automous code
-    	//double currentDist = drive->leftPosition() / DriveTicksPerInch;
-        //double remainingMoveDist = goalDistance - currentDist;
-        //if(remainingMoveDist>0){
-        //    drive->setLeft(.6);
-        //    drive->setRight(.5);
-        //} else{
-        //    drive->setLeft(0);
-        //    drive->setRight(0);
-        //}
-        //double dist;
-        //dist = drive->rightPosition() / DriveTicksPerInch;
-        //log->info("renc in inches: %f\n", dist);
-        //dist = drive->leftPosition() / DriveTicksPerInch;
-        //log->info("lenc in inches: %f\n", dist);
-        //log->print();
+    	  //if (currentdistance >= goalDistance){
+    	  	  //drive->leftMotor->Set(0);
+    	  	  //drive->rightMotor->Set(0);
+    		  //
+   //}
+    	  //else { drive->leftMotor->Set(5);
+    			 //drive->rightMotor->Set(6);
+    //}
+    	  //
     }
-
     void AutonomousDisabled() {
         //delete autonomous;
     }
@@ -458,54 +349,24 @@ public:
         // ensure all motors are shut down
         leftClimber->motor->Set(0.0);
         rightClimber->motor->Set(0.0);
-        jack->motor->Set(0.0);
     }
      
     void ClimbPeriodic() {
     	displayCount++;
-        //amount to move past the bar to extend hook
-        static const float CatchDistance = 2.0f;
         // This is the distance in inches the climber must be initially raised
-        static const float InitialClimberPosition = 8.0f + CatchDistance; // Inches
-        static const float LowerHookPosition = 16.4f + CatchDistance;
-        static const float UpperHookPosition = 16.4f + CatchDistance;
-        // This is the distance in inches the jack must be raised
-        static const float JackPosition = 850.0f;
-        // Distance to pull down on the grabber before it is expected to engage.
-        // If it does NOT engage in this distance, that suggests something may be wrong
-        // and we should abort.
-        static const float ClimberGrabGuardDistance = CatchDistance + 2.0f;
+        static const float PullupPostion = -5.0f;
         log->info("current state is: %s\n",ClimbStateString(climbState));
         // depending on state, cont
         switch (climbState) {
         case NotInitialized: {
             leftClimber->encoder->Start();
             rightClimber->encoder->Start();
-            jack->encoder->Start();
             bar = LowerBar;
             climber = NULL;
-            setClimbState(Initializing);
+            setClimbState(InitialGrab);
             break; }
-        case Initializing: {
-            bool leftDone = leftClimber->UpdateState(1.0, InitialClimberPosition);
-            bool rightDone = rightClimber->UpdateState(1.0, InitialClimberPosition);
-        	bool jackDone = jack->UpdateState(1.0, JackPosition);
-            startingState = false;
-            // moving climbers into initial position
-            if (leftDone && rightDone && jackDone) {
-                setClimbState(InitialGrab);
-            	// Jack merged in to initializing
-                //setClimbState(DeployingJack);
-            }
-            break; }
-        case DeployingJack: {
-            // moving jack into position
-        	bool jackDone = jack->UpdateState(1.0, JackPosition);
-			startingState = false;
-            if (jackDone){
-                setClimbState(InitialGrab);
-            }
-            break; }
+        //when they set up the robot they have to set the climbers 6" above the bar
+       
         case InitialGrab: {
             // Pulling both arms down enough to latch (low power consumption)
             // We have several options here:
@@ -513,112 +374,14 @@ public:
             // 2. Move until the power goes up, and then check the encoders to see if the distance
             //    is plausible
             // 3. Move until a limit HookSwitch inside the grip for each climber trips
-            bool leftDone = leftClimber->UpdateState(-1.0, InitialClimberPosition - ClimberGrabGuardDistance, UpperHookSwitch);
-            bool rightDone = rightClimber->UpdateState(-1.0, InitialClimberPosition - ClimberGrabGuardDistance, UpperHookSwitch);
+            bool leftDone = leftClimber->UpdateState(-1.0, PullupPostion);
+            bool rightDone = rightClimber->UpdateState(-1.0, PullupPostion);
             startingState = false;
             // moving climbers into initial position
             if (leftDone && rightDone)
-                setClimbState(InitialLift);
-            break; }
-        case InitialLift: {
-            // Continue pulling, but now high power consumption
-            //Note that this may run into the bottom hard
-            bool leftDone = leftClimber->UpdateState(-1.0, 0, NoHookSwitch);
-            bool rightDone = rightClimber->UpdateState(-1.0, 0, NoHookSwitch);
-        	//bool jackDone = jack->UpdateState(-1.0, 0);	// Return jack to original position
-        	startingState = false;
-            // moving climbers into initial position
-            if (leftDone && rightDone /*&& jackDone*/) {
                 setClimbState(Abort);
-                // TEMPORARILY DISABLED!!!
-                // setClimbState(MoveArmUpToMiddle);
-            }
             break; }
-        case MoveArmUpToMiddle: {
-            // moving a climber lower hook over the bar
-            if (startingState) {
-                // set motors, etc.
-                if (climber != leftClimber){
-                    climber = leftClimber;
-                } else {
-                    climber = rightClimber;    
-                }                 
-            }
-            bool done = climber->UpdateState(1.0, LowerHookPosition);
-            startingState = false;
-            if (done)
-                setClimbState(GrabMiddle);
-            break; }
-        case GrabMiddle: {
-            bool done = climber->UpdateState(-1.0, LowerHookPosition - ClimberGrabGuardDistance, LowerHookSwitch);
-            startingState = false;
-            if (done){
-                if (climber == leftClimber){
-                    setClimbState(MoveArmUpToMiddle);
-                    // this causes the control to return to MoveArmUpToMiddle for the right climber.
-                }else{
-                    setClimbState(PullUpToMiddle);
-                }
-            }    
-            break; }
-        case PullUpToMiddle: {
-            bool leftDone = leftClimber->UpdateState(-1.0, 0);
-            bool rightDone = rightClimber->UpdateState(-1.0, 0);
-            startingState = false;
-            // moving climbers into initial position
-            if (leftDone && rightDone)
-                setClimbState(MoveArmUpToTop);
-            break; }
-        case MoveArmUpToTop: {
-            if (startingState) {
-                // set motors, etc.
-                if (climber != leftClimber){
-                    climber = leftClimber;
-                } else {
-                    climber = rightClimber;    
-                }                 
-            }
-            bool done = climber->UpdateState(1.0, UpperHookPosition);
-            startingState = false;
-            if (done)
-                setClimbState(GrabTop);
-            break; }
-        case GrabTop: {
-            bool done = climber->UpdateState(-1.0, UpperHookPosition - ClimberGrabGuardDistance, UpperHookSwitch);
-            startingState = false;
-            if (done){
-                
-                if (climber == leftClimber){
-                    setClimbState(MoveArmUpToTop);
-                }else{
-                    setClimbState(PullUpToTop);
-                }
-            }
-            break; }
-        case PullUpToTop: {
-            bool leftDone = leftClimber->UpdateState(-1.0, 0);
-            bool rightDone = rightClimber->UpdateState(-1.0, 0);
-            startingState = false;
-            // moving climbers into Final Position
-            if (leftDone && rightDone){
-                if (bar == LowerBar){
-                    bar = MiddleBar;
-                    setClimbState(MoveArmUpToMiddle);
-                }else{
-                    setClimbState(FinalShooting);
-                }
-            }
-            break; }
-        case FinalShooting: {
-            if (startingState) {
-                // set motors, etc.
-                startingState = false;
-            }
-            if (0 /*!endCondition*/)
-                return;
-            // turn off motors, etc., that were enabled
-            setClimbState(Finished);
-            break; }
+       
         case Abort: {
             return;
             }
@@ -626,18 +389,16 @@ public:
             log->info("unexpected climber state!");
             log->print();
         }
-        log->info("LRJ %f %f %f",
+        log->info("LR %f %f",
     			leftClimber->encoder->GetDistance(),
-    			rightClimber->encoder->GetDistance(),
-    			jack->encoder->GetDistance());
-    	log->info("LRJL %d %d %d %d %d %d %d %d",
+    			rightClimber->encoder->GetDistance());
+    	log->info("LRL %d %d %d %d %d %d %d",
     		leftClimber->lowerLimitSwitch->Get(),
     		leftClimber->lowerHookSwitch->Get(),
     		leftClimber->upperHookSwitch->Get(),
     		rightClimber->lowerLimitSwitch->Get(),
     		rightClimber->lowerHookSwitch->Get(),
     		rightClimber->upperHookSwitch->Get(),
-    		jack->lowerLimitSwitch->Get(),
     		loaderSwitch->Get());
     	log->print();
     }
@@ -760,9 +521,6 @@ public:
         		rightClimber->motor->Set(control->gamepadRightVertical());
         	}
         }
-        if (control->gamepadToggleButton(2)) {
-        	jack->motor->Set(-control->gamepadRightVertical());
-        }
 
         // assorted debug
         //log->info("Shift %s", control->toggleButton(8) 
@@ -791,16 +549,13 @@ public:
             log->info("LR %f %f",
         			leftClimber->encoder->GetDistance(),
         			rightClimber->encoder->GetDistance());
-            log->info("J %f",
-        			jack->encoder->GetDistance());
-        	log->info("LRJL %d %d %d %d %d %d %d %d",
+        	log->info("LRL %d %d %d %d %d %d %d",
         		leftClimber->lowerLimitSwitch->Get(),
         		leftClimber->lowerHookSwitch->Get(),
         		leftClimber->upperHookSwitch->Get(),
         		rightClimber->lowerLimitSwitch->Get(),
         		rightClimber->lowerHookSwitch->Get(),
         		rightClimber->upperHookSwitch->Get(),
-        		jack->lowerLimitSwitch->Get(),
         		loaderSwitch->Get());
         	log->print();
         }
@@ -826,8 +581,6 @@ void ClimbPeriodic(std::string s, float f) {
         robot->rightClimber->encoder->Set(f);
     } else if (s=="le") {
         robot->leftClimber->encoder->Set(f);
-    } else if (s=="je") {
-        robot->jack->encoder->Set(f);
     } else if (s=="rls") {
         robot->rightClimber->lowerHookSwitch->Set(f != 0);
     } else if (s=="rus") {
