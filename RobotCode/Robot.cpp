@@ -9,7 +9,7 @@
 // it is considered "good enough"
 #define ClimberCloseTolerance 0.5
 
-#define DriveDistancePerPulse (1/18.1)
+#define DriveDistancePerPulse (1)
 
 // Climber - 
 #define ClimberDistancePerPulse (1.0/490.0)
@@ -313,20 +313,23 @@ public:
     }
     
     void AutonomousPeriodic() { 
-    	//
-    	//currentDistance = leftDriveEncoder->Get();
-    	  //drive->leftMotor->Set();
-    	  //drive->rightMotor->Set();
-    	//
-    	  //if (currentdistance >= goalDistance){
-    	  	  //drive->leftMotor->Set(0);
-    	  	  //drive->rightMotor->Set(0);
-    		  //
-   //}
-    	  //else { drive->leftMotor->Set(5);
-    			 //drive->rightMotor->Set(6);
-    //}
-    	  //
+    	/*
+    	currentDistance = leftDriveEncoder->Get();
+    	  drive->leftMotor->Set();
+    	  drive->rightMotor->Set();
+    	   
+    	  if (currentdistance >= goalDistance){
+    	  	  drive->leftMotor->Set(0);
+    	  	  drive->rightMotor->Set(0);
+   }
+    	  else { drive->leftMotor->Set(5);
+    			 drive->rightMotor->Set(6);
+   }
+    	  if (currentDistance == goalDistance)
+    	  	  shooterMotor->Set(1.0);
+    	      loaderMotor->Set(Relay::kOn);
+    	  
+    */
     }
     void AutonomousDisabled() {
         //delete autonomous;
@@ -546,9 +549,12 @@ public:
     				" R"[control->gamepadToggleButton(3)],
     				" J"[control->gamepadToggleButton(2)],
 					" S"[control->gamepadToggleButton(4)]);
-            log->info("LR %f %f",
+            log->info("LRC %f %f",
         			leftClimber->encoder->GetDistance(),
         			rightClimber->encoder->GetDistance());
+            log->info("LRD %f %f",
+            		leftDriveEncoder->GetDistance(),
+            		rightDriveEncoder->GetDistance());
         	log->info("LRL %d %d %d %d %d %d %d",
         		leftClimber->lowerLimitSwitch->Get(),
         		leftClimber->lowerHookSwitch->Get(),
