@@ -9,7 +9,7 @@
 // it is considered "good enough"
 #define ClimberCloseTolerance 0.5
 
-#define DriveDistancePerPulse (1)
+#define DriveDistancePerPulse (12./128.)
 
 // Climber - 
 #define ClimberDistancePerPulse (1.0/490.0)
@@ -17,7 +17,7 @@
 
 static const int DisplayInterval = 2;
 static int displayCount = 0;
-//static int currentDistance = 0;
+static double currentDistance = 0;
 static bool display() { return true; }
 
 class BcdSwitch {
@@ -203,6 +203,10 @@ public:
     float cameraPivotAngle;
     
     Relay* lightRing;
+    
+	int loadSwitchDelay;
+	int loadCount;
+	bool loadSwitchOldState;
 public:
     Robot() {
         log = new Log(this);
@@ -269,8 +273,10 @@ public:
         log->print();
         climber = NULL;
         leftDriveEncoder->Reset();
+        leftDriveEncoder->SetDistancePerPulse(DriveDistancePerPulse);
         leftDriveEncoder->Start();
 		rightDriveEncoder->Reset();
+        rightDriveEncoder->SetDistancePerPulse(DriveDistancePerPulse);
         rightDriveEncoder->Start();
         //leftClimber->motorController->Disable();
 		leftClimber->encoder->Reset();
@@ -279,7 +285,8 @@ public:
         rightClimber->encoder->Reset();
         rightClimber->encoder->Start();
         bcdValue = bcd->value();
-#if 0
+        loadSwitchOldState = loaderSwitch->Get();
+        #if 0
 		bool leftDone = false;
 		bool rightDone = false;
         // Only do this for some BCD values?
@@ -303,33 +310,36 @@ public:
         loading = false;
         loaderDisengageDetected = false;
         //This is a rough guess of motor power it should be based on voltage
-        shooterMotorVolts = 6.58; // volts as a fraction of 12V
+        shooterMotorVolts = 8.0; // volts as a fraction of 12V
+    	loadCount = 0;
     }
 
     void AutonomousInit() {
-        //init();
-        //goalDistance = 120;
-        //autonomousShooterDelay = 0;
+        init();
+        currentDistance = 0;
+        goalDistance = 6.0*12.0; // 6 feet
+        autonomousShooterDelay = 0;
+        shooterMotor->Set(0);
+        loaderMotor->Set(Relay::kOff);
     }
     
     void AutonomousPeriodic() { 
-    	/*
-    	currentDistance = leftDriveEncoder->Get();
-    	  drive->leftMotor->Set();
-    	  drive->rightMotor->Set();
-    	   
-    	  if (currentdistance >= goalDistance){
-    	  	  drive->leftMotor->Set(0);
-    	  	  drive->rightMotor->Set(0);
-   }
-    	  else { drive->leftMotor->Set(5);
-    			 drive->rightMotor->Set(6);
-   }
-    	  if (currentDistance == goalDistance)
-    	  	  shooterMotor->Set(1.0);
-    	      loaderMotor->Set(Relay::kOn);
-    	  
-    */
+    	
+    	currentDistance = leftDriveEncoder->GetDistance();
+		shooterMotor->Set(-shooterMotorVolts);
+		
+    	if (currentDistance >= goalDistance){
+    		drive->setLeft(0);
+    		drive->setRight(0);
+    		loaderMotor->Set(Relay::kForward);
+    	} else {
+    		drive->setLeft(.49);
+    		drive->setRight(.5);
+    	}
+        //log->info("LRD %f %f",
+        //		leftDriveEncoder->GetDistance(),
+        //		rightDriveEncoder->GetDistance());
+    	//log->print();
     }
     void AutonomousDisabled() {
         //delete autonomous;
@@ -408,7 +418,9 @@ public:
 
     void TeleopInit() {
         init();
-        drive->setShiftMode(Drive::Manual);  
+        drive->setShiftMode(Drive::Manual);
+    	shooterMotor->Set(0.0);  
+		loaderMotor->Set(Relay::kOff);
     }
 
     void TeleopPeriodic() {
@@ -437,17 +449,21 @@ public:
         // For the loader, if we are rotating, wait for at least 100 counts before
         // checking the switch or adjusting motor power
         if (loading) {
-        	if (loaderSwitch->Get()) {
-        		loaderDisengageDetected = true;
-        	}
+        	//if (loaderSwitch->Get()) {
+        		//loaderDisengageDetected = true;
+        	//}
+        	loadSwitchDelay++;
         	// If already rotating, and the switch trips, power down the motor
-        	if (loaderDisengageDetected && !loaderSwitch->Get()) {
+        	if (/*loaderDisengageDetected*/ loaderSwitch->Get() != loadSwitchOldState) {
 				loaderMotor->Set(Relay::kOff);
 				loading = false;
+				loadSwitchOldState = loaderSwitch->Get();
         	}
         } else {
            	// If not rotating and the gamepad button is set, start rotating
         	if (control->gamepadButton(7)) {
+        		loadSwitchDelay = 0;
+        		loadCount++;
         		loaderMotor->Set(Relay::kForward);
         		loading = true;
         		loaderDisengageDetected = false;
@@ -469,10 +485,11 @@ public:
         //
         if (control->gamepadToggleButton(8)) {
         	shooterMotor->Set(-shooterMotorVolts);// negative because motor is wired backwerds
-        	//log->info("shooter on");
+        	log->info("shooter on");
         } else {
-        	shooterMotor->Set(0.0);        	
-        	//log->info("shooter off");
+        	shooterMotor->Set(0.0);
+        	log->info("shooter off");
+        	
         }
         
         if (control->gamepadLeftVertical() > 0.05 ||
@@ -544,6 +561,8 @@ public:
     		//log->info("lg %d ldd %d", loading, loaderDisengageDetected);
             //log->info("BCD: %d", bcd->value());
     		log->info("SHV: %f", shooterMotorVolts);
+    		//log->info("LdCDS: %d %d %d", loadCount, loaderDisengageDetected, loaderSwitch->Get());
+    		
     		log->info("ena: %c%c%c%c",
     				" L"[control->gamepadToggleButton(1)],
     				" R"[control->gamepadToggleButton(3)],
